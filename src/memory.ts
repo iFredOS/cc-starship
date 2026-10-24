@@ -94,6 +94,33 @@ function powershell(lastdir: string): string[] {
   ];
 }
 
+/**
+ * With the shell prompt switched off, the shell's own prompt even when the profile starts
+ * Starship itself: undoes what `starship init` set up. Shell memory keeps working (the
+ * PowerShell prompt still calls Starship's pre-command hook, where the folder is saved).
+ */
+export function promptOffBlock(kind: ShellKind): string {
+  const lines = kind === "zsh"
+    ? [
+      "# The shell prompt is off in cc-starship: zsh's own prompt instead of Starship.",
+      "autoload -Uz add-zsh-hook",
+      "add-zsh-hook -d precmd prompt_starship_precmd 2>/dev/null",
+      "add-zsh-hook -d preexec prompt_starship_preexec 2>/dev/null",
+      "PROMPT='%n@%m %1~ %# '",
+      "RPROMPT=''",
+      "PROMPT2='%_> '",
+    ]
+    : [
+      "# The shell prompt is off in cc-starship: PowerShell's own prompt instead of Starship.",
+      "if (Get-Module PSReadLine) { Set-PSReadLineOption -ContinuationPrompt '>> ' -ExtraPromptLineCount 0 }",
+      "function global:prompt {",
+      "  if (Test-Path Function:\\Invoke-Starship-PreCommand) { Invoke-Starship-PreCommand }",
+      "  \"PS $($executionContext.SessionState.Path.CurrentLocation)$('>' * ($nestedPromptLevel + 1)) \"",
+      "}",
+    ];
+  return lines.join("\n") + "\n";
+}
+
 /** The profile lines for `kind`, saving the folder to `lastdir`. */
 export function memoryBlock(kind: ShellKind, lastdir: string): string {
   if (kind === "zsh") return zsh(lastdir).join("\n") + "\n";

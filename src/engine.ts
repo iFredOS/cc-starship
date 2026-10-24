@@ -4,7 +4,7 @@
 import { createHash } from "node:crypto";
 import { basename, dirname, extname, join, resolve } from "node:path";
 import { installDir, isWindows, legacyInstallDir, paths, readState, type State } from "./paths.ts";
-import { memoryBlock, psQuote, zshQuote } from "./memory.ts";
+import { memoryBlock, promptOffBlock, psQuote, zshQuote } from "./memory.ts";
 import {
   applyWindowsTerminal,
   GHOSTTY_LINES,
@@ -21,6 +21,8 @@ const MARK_START = "# >>> cc-starship >>>";
 const MARK_END = "# <<< cc-starship <<<";
 const MEMORY_START = "# >>> cc-starship memory >>>";
 const MEMORY_END = "# <<< cc-starship memory <<<";
+const PROMPT_OFF_START = "# >>> cc-starship prompt off >>>";
+const PROMPT_OFF_END = "# <<< cc-starship prompt off <<<";
 const TERMINAL_START = "# >>> cc-starship terminal >>>";
 const TERMINAL_END = "# <<< cc-starship terminal <<<";
 
@@ -53,6 +55,8 @@ interface Manifest {
   profiles: ProfileEntry[];
   /** Shell memory blocks, one per profile. */
   memory?: ProfileEntry[];
+  /** With the shell prompt off: blocks restoring the shell's own prompt where the profile starts Starship. */
+  promptOff?: ProfileEntry[];
   /** cmux/Ghostty config blocks. */
   terminal?: ProfileEntry[];
   windowsTerminal?: FileEntry & { fonts: WindowsTerminalPrior };
@@ -213,7 +217,7 @@ function appendBlock(
 
 function hookProfile(profile: string, starship: string, ours: boolean): ProfileEntry | null {
   const text = lstat(profile) ? readText(profile) : "";
-  if (/starship(\.exe)?['"]?\s+init/.test(text)) return null; // already starts Starship
+  if (STARTS_STARSHIP.test(text)) return null; // already starts Starship
   return appendBlock(profile, [initLine(profile, starship)], MARK_START, MARK_END, ours);
 }
 
@@ -243,7 +247,13 @@ function unhookProfile(entry: ProfileEntry, all: ProfileEntry[]): string {
   return `${entry.path}: removed the cc-starship block`;
 }
 
-const allBlocks = (m: Manifest) => [...m.profiles, ...(m.memory ?? []), ...(m.terminal ?? [])];
+const allBlocks = (m: Manifest) => [
+  ...m.profiles,
+  ...(m.memory ?? []),
+  ...(m.promptOff ?? []),
+  ...(m.terminal ?? []),
+];
+const STARTS_STARSHIP = /starship(\.exe)?['"]?\s+init/;
 
 // ── Components ───────────────────────────────────────────────────────────
 
@@ -340,20 +350,63 @@ function shellKind(profile: string): "zsh" | "powershell" | null {
   return basename(profile).includes("zsh") ? "zsh" : null;
 }
 
+/** Shell prompt off: profiles that still start Starship on their own get the shell's prompt back. */
+function addPromptOff(manifest: Manifest, report: string[]): void {
+  manifest.promptOff ??= [];
+  for (const profile of shellProfiles()) {
+    const kind = shellKind(profile);
+    if (!kind || manifest.promptOff.some((e) => e.path === profile)) continue;
+    if (!lstat(profile) || !STARTS_STARSHIP.test(readText(profile))) continue;
+    const lines = promptOffBlock(kind).trimEnd().split("\n");
+    manifest.promptOff.push(appendBlock(profile, lines, PROMPT_OFF_START, PROMPT_OFF_END, false));
+    report.push(`${profile}: ${kind === "zsh" ? "zsh" : "PowerShell"}'s own prompt in new tabs`);
+  }
+}
+
+function removePromptOff(manifest: Manifest, report: string[]): void {
+  for (const entry of manifest.promptOff ?? []) report.push(unhookProfile(entry, allBlocks(manifest)));
+  delete manifest.promptOff;
+}
+
+/**
+ * Makes `list` hold one block in `file` with exactly `lines`: kept when it already does,
+ * otherwise (a first install, or a block an older version wrote) written anew.
+ * Returns false when nothing changed.
+ */
+function ensureBlock(
+  manifest: Manifest,
+  list: ProfileEntry[],
+  file: string,
+  lines: string[],
+  [start, end]: [string, string],
+): boolean {
+  const at = list.findIndex((e) => e.path === file);
+  const wanted = [start, ...lines, end].join("\n") + "\n";
+  if (at >= 0 && list[at].block.replace(/^\r?\n/, "").replaceAll("\r\n", "\n") === wanted) return false;
+  let ours = createdByUs(manifest, file);
+  if (at >= 0) {
+    ours ||= list[at].created;
+    unhookProfile(list[at], allBlocks(manifest));
+    list.splice(at, 1);
+  }
+  list.push(appendBlock(file, lines, start, end, ours));
+  return true;
+}
+
 function addMemory(manifest: Manifest, report: string[]): void {
   manifest.memory ??= [];
   for (const profile of shellProfiles()) {
-    if (manifest.memory.some((e) => e.path === profile)) continue;
     const kind = shellKind(profile);
     if (!kind) {
-      report.push(`${profile}: shell memory supports zsh and PowerShell only`);
+      if (!manifest.memory.some((e) => e.path === profile)) {
+        report.push(`${profile}: shell memory supports zsh and PowerShell only`);
+      }
       continue;
     }
     const lines = memoryBlock(kind, paths.lastdir()).trimEnd().split("\n");
-    manifest.memory.push(
-      appendBlock(profile, lines, MEMORY_START, MEMORY_END, createdByUs(manifest, profile)),
-    );
-    report.push(`${profile}: new tabs open in your last folder; history without duplicates`);
+    if (ensureBlock(manifest, manifest.memory, profile, lines, [MEMORY_START, MEMORY_END])) {
+      report.push(`${profile}: new tabs open in your last folder; history without duplicates`);
+    }
   }
 }
 
@@ -374,7 +427,20 @@ function addTerminal(manifest: Manifest, report: string[]): void {
   manifest.terminal ??= [];
   for (const file of terminalFiles()) {
     if (file.endsWith(".json")) {
-      if (manifest.windowsTerminal) continue;
+      if (manifest.windowsTerminal) {
+        // Already set up: only bring the default font up to date (an older version may have
+        // used another size); the fonts recorded at install stay as they were.
+        const data = parseJson(file) as
+          | { profiles?: { defaults?: { font?: Record<string, unknown> } } }
+          | null;
+        const font = data?.profiles?.defaults?.font;
+        if (data && font && (font.face !== TERMINAL_FONT || font.size !== TERMINAL_SIZE)) {
+          Object.assign(font, { face: TERMINAL_FONT, size: TERMINAL_SIZE });
+          manifest.windowsTerminal.written = writeOwned(file, JSON.stringify(data, null, 4) + "\n");
+          report.push(`${file}: ${TERMINAL_FONT} ${TERMINAL_SIZE} for every profile`);
+        }
+        continue;
+      }
       const data = parseJson(file);
       if (!data) {
         report.push(`${file}: has comments, so set the font by hand (${TERMINAL_FONT} ${TERMINAL_SIZE})`);
@@ -385,8 +451,9 @@ function addTerminal(manifest: Manifest, report: string[]): void {
       const written = writeOwned(file, JSON.stringify(data, null, 4) + "\n");
       manifest.windowsTerminal = { path: file, prior, written, fonts };
       report.push(`${file}: ${TERMINAL_FONT} ${TERMINAL_SIZE} for every profile`);
-    } else if (!manifest.terminal.some((e) => e.path === file)) {
-      manifest.terminal.push(appendBlock(file, GHOSTTY_LINES, TERMINAL_START, TERMINAL_END, false));
+    } else if (
+      ensureBlock(manifest, manifest.terminal, file, GHOSTTY_LINES, [TERMINAL_START, TERMINAL_END])
+    ) {
       report.push(`${file}: ${TERMINAL_FONT} ${TERMINAL_SIZE}, Option key as Alt`);
     }
   }
@@ -476,7 +543,7 @@ function setUsageHook(data: Record<string, unknown>, bin: string, on: boolean): 
 /** settings.json holds two parts: the statusLine (bar) and the UserPromptSubmit hook. */
 function syncSettings(state: InstalledState, manifest: Manifest, report: string[]): void {
   const { bar, hook } = state.components;
-  if (!bar && !hook) return removeSettings(manifest, report, state.bin);
+  if (!bar && !hook && !manifest.settings) return; // nothing of ours in settings.json
   const path = paths.claudeSettings();
   const settings = readSettings(path);
   manifest.settings ??= {
@@ -494,9 +561,18 @@ function syncSettings(state: InstalledState, manifest: Manifest, report: string[
       padding: 0,
       refreshInterval: 60,
     };
-  } else if (manifest.settings.hadStatusLine) data.statusLine = manifest.settings.priorStatusLine;
-  else delete data.statusLine;
+  } else {
+    // Off means no status bar, not the one set before install (uninstall puts that back).
+    delete data.statusLine;
+  }
   setUsageHook(data, state.bin, hook);
+  if (!bar && !hook && !manifest.settings.hadStatusLine) {
+    // Nothing of ours left and nothing to put back later: the file as it was.
+    report.push(`${path}: ${putBackJson(manifest.settings, data, 2)}`);
+    delete manifest.settings;
+    return;
+  }
+  if (!bar) report.push(`${path}: no status bar in Claude Code`);
   manifest.settings.written = writeOwned(path, JSON.stringify(data, null, 2) + "\n");
   if (bar) report.push(`${path}: statusLine runs ${state.bin}`);
   if (hook) report.push(`${path}: Claude gets your usage (see "Send usage to Claude" for when)`);
@@ -520,8 +596,13 @@ function apply(state: InstalledState, manifest: Manifest, report: string[]): voi
   const p = preset(state.theme);
   writeText(paths.barConfig(), barConfig(p));
   writeText(paths.state(), JSON.stringify(state, null, 2) + "\n");
-  if (state.components.shell) addShell(p, state, manifest, report);
-  else removeShell(manifest, report);
+  if (state.components.shell) {
+    removePromptOff(manifest, report);
+    addShell(p, state, manifest, report);
+  } else {
+    removeShell(manifest, report);
+    addPromptOff(manifest, report);
+  }
   syncSettings(state, manifest, report);
   if (state.components.memory) addMemory(manifest, report);
   else removeMemory(manifest, report);
@@ -604,6 +685,7 @@ export async function uninstall(): Promise<string[]> {
   if (!manifest) throw new Error(`nothing to uninstall: no manifest in ${installDir()}`);
   const report: string[] = [];
   removeTerminal(manifest, report);
+  removePromptOff(manifest, report);
   removeMemory(manifest, report);
   removeShell(manifest, report);
   removeSettings(manifest, report, readInstalled()?.bin);

@@ -139,7 +139,7 @@ PowerShell. Tabs that start somewhere specific (restored windows, "Open in Termi
 where they are. Shells run by agents or one-off commands (`ssh host cmd`, `pwsh -Command`) are
 left alone. On Windows it uses the Starship prompt.
 
-**Terminal settings.** The same font and keys everywhere: JetBrainsMono Nerd Font, size 15,
+**Terminal settings.** The same font and keys everywhere: JetBrainsMono Nerd Font, size 14,
 and Option working as Alt in cmux and Ghostty. In Windows Terminal it becomes the default font
 for every profile. The font is installed if missing.
 

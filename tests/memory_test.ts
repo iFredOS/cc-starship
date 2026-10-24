@@ -1,6 +1,6 @@
 import { assert, assertEquals, assertStringIncludes } from "@std/assert";
 import { join } from "node:path";
-import { memoryBlock } from "../src/memory.ts";
+import { memoryBlock, promptOffBlock } from "../src/memory.ts";
 import { tempDir } from "./helpers.ts";
 
 /** A home with a .zshrc holding only the memory block. */
@@ -110,4 +110,11 @@ Deno.test("zsh: a bigger history size you set yourself is kept (only ever raised
 Deno.test("PowerShell: curly quotes and apostrophes in the folder path stay inside the string", () => {
   const block = memoryBlock("powershell", "C:\\Users\\O’Brien's\\lastdir");
   assertStringIncludes(block, "$global:__sslLastDir = 'C:\\Users\\O’’Brien''s\\lastdir'");
+});
+
+Deno.test("PowerShell 'prompt off' block: PowerShell's own prompt, still saving the folder", () => {
+  const block = promptOffBlock("powershell");
+  assertStringIncludes(block, "function global:prompt");
+  assertStringIncludes(block, "Invoke-Starship-PreCommand", "shell memory keeps working");
+  assertStringIncludes(promptOffBlock("zsh"), "PROMPT='%n@%m %1~ %# '");
 });

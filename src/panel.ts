@@ -170,7 +170,13 @@ export function looksGrid(
 
 /** Top of every screen: a blank line, the logo and version, then the tabs as chips. */
 export function header(
-  o: { theme: Theme; screen: "looks" | "components" | "fonts"; version: string; width: number },
+  o: {
+    theme: Theme;
+    screen: "looks" | "components" | "fonts";
+    version: string;
+    width: number;
+    roomy?: boolean;
+  },
 ) {
   const { theme } = o;
   const logo = gradientPill(" \u{f135} cc-starship ", theme.accent, theme.second, theme.onAccent);
@@ -182,13 +188,20 @@ export function header(
   const tab = (name: string, on: boolean) =>
     on ? pill(`  ${name}  `, theme.accent, theme.onAccent, true) : paint(theme.dim, `   ${name}   `);
   const looks = o.screen === "looks";
-  return [
-    "",
-    clip(` ${logo}${tagline}${" ".repeat(gap)}${version}`, o.width),
-    "",
-    ` ${tab("Looks", looks)} ${tab("Components", !looks)}   ${paint(theme.dim, "Tab switches")}`,
-    "",
-  ];
+  const top = clip(` ${logo}${tagline}${" ".repeat(gap)}${version}`, o.width);
+  const tabs = ` ${tab("Looks", looks)} ${tab("Components", !looks)}   ${paint(theme.dim, "Tab switches")}`;
+  // Compact (short windows): the breathing room on top stays, the rest closes up.
+  return o.roomy === false ? ["", top, tabs] : ["", top, "", tabs, ""];
+}
+
+/** The first layout that fits `rows` lines; if none does, the last one cut at the bottom (the top always shows). */
+export function fitView(layouts: (() => string[])[], rows: number): string[] {
+  let lines: string[] = [];
+  for (const layout of layouts) {
+    lines = layout();
+    if (lines.length <= rows) return lines;
+  }
+  return lines.slice(0, Math.max(1, rows));
 }
 
 /** Key hints as keycaps: `[["↑↓", "choose"], …]`. */

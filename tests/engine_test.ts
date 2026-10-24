@@ -234,7 +234,11 @@ Deno.test("components: bar only leaves the shell alone; toggling restores each p
       memory: false,
       terminal: false,
     });
-    assertEquals(sha(s.settings), settings0, "status bar off: settings.json back exactly");
+    assertEquals(
+      sha(s.settings),
+      settings0,
+      "status bar off, nothing set before: settings.json back exactly",
+    );
     assert(!Deno.readTextFileSync(s.starship).includes("${custom.claude}"), "usage segment gone");
 
     await uninstall();
@@ -295,21 +299,65 @@ Deno.test("usage hook: added next to the user's own hooks, removed again exactly
   }
 });
 
-Deno.test("usage hook without the status bar keeps the user's statusLine", async () => {
+Deno.test("status bar off means no status bar, even where another one was set before", async () => {
   const s = sandbox();
   try {
     Deno.writeTextFileSync(s.settings, '{"statusLine": {"type": "command", "command": "node old.mjs"}}\n');
-    await install("rainbow", {
-      ...opts(s),
-      components: { ...ALL_COMPONENTS, bar: false, hook: true },
-    });
+    const before = sha(s.settings);
+    await install("rainbow", { ...opts(s), components: { ...ALL_COMPONENTS, bar: false, hook: true } });
     const data = JSON.parse(Deno.readTextFileSync(s.settings));
-    assertEquals(data.statusLine, { type: "command", command: "node old.mjs" });
+    assertEquals(data.statusLine, undefined, "the old status bar doesn't come back while ours is off");
     assertEquals(data.hooks.UserPromptSubmit.length, 1);
-    await setComponents({ ...ALL_COMPONENTS, bar: false, hook: false, memory: false, terminal: false });
-    assertEquals(JSON.parse(Deno.readTextFileSync(s.settings)), {
-      statusLine: { type: "command", command: "node old.mjs" },
-    });
+    await setComponents({ ...ALL_COMPONENTS, bar: false, hook: false });
+    assertEquals(JSON.parse(Deno.readTextFileSync(s.settings)), {}, "both off: nothing left");
+    await uninstall();
+    assertEquals(sha(s.settings), before, "uninstall puts the previous status bar back");
+  } finally {
+    s.restore();
+  }
+});
+
+Deno.test("status bar off with nothing set before: settings.json back exactly", async () => {
+  const s = sandbox();
+  try {
+    Deno.writeTextFileSync(s.settings, '{"model": "opus"}\n');
+    const before = sha(s.settings);
+    await install("rainbow", opts(s));
+    await setComponents({ ...ALL_COMPONENTS, bar: false, hook: false });
+    assertEquals(sha(s.settings), before);
+  } finally {
+    s.restore();
+  }
+});
+
+Deno.test("shell prompt off means the shell's own prompt, even if the profile starts Starship itself", async () => {
+  const s = sandbox();
+  try {
+    Deno.writeTextFileSync(s.zshrc, 'export A=1\neval "$(starship init zsh)"\n');
+    const before = sha(s.zshrc);
+    await install("rainbow", { ...opts(s), components: { ...ALL_COMPONENTS, memory: false } });
+    assertEquals(sha(s.zshrc), before, "on: the profile's own Starship line is enough");
+    await setComponents({ ...ALL_COMPONENTS, shell: false, usage: false, memory: false });
+    const off = Deno.readTextFileSync(s.zshrc);
+    assertStringIncludes(off, "# >>> cc-starship prompt off >>>");
+    // A real interactive zsh, with the real Starship: the prompt is zsh's own.
+    const env = { ...Deno.env.toObject(), HOME: s.home, ZDOTDIR: s.home };
+    delete (env as Record<string, string>).CLAUDECODE;
+    const out = new Deno.Command("zsh", {
+      args: ["-i", "-c", 'print -r -- "$PROMPT|${precmd_functions[*]}"'],
+      env,
+      clearEnv: true,
+      stdout: "piped",
+      stderr: "null",
+    }).outputSync();
+    const [prompt, hooks] = new TextDecoder().decode(out.stdout).trim().split("|");
+    assertEquals(prompt, "%n@%m %1~ %# ");
+    assert(!hooks.includes("starship"), hooks);
+    await setComponents({ ...ALL_COMPONENTS, memory: false });
+    assertEquals(sha(s.zshrc), before, "on again: the off block is gone");
+    await setComponents({ ...ALL_COMPONENTS, shell: false, usage: false, memory: false });
+    await uninstall();
+    assertEquals(sha(s.zshrc), before, "uninstall: exactly as before");
   } finally {
     s.restore();
   }
@@ -370,7 +418,7 @@ Deno.test("terminal settings: cmux/Ghostty get a block, removed exactly", async 
       const line of [
         'font-family = ""',
         'font-family = "JetBrainsMono Nerd Font"',
-        "font-size = 15",
+        "font-size = 14",
         "macos-option-as-alt = left",
       ]
     ) assertStringIncludes(block, line);
@@ -403,7 +451,7 @@ Deno.test("terminal settings: Windows Terminal default font, per-profile fonts c
     const before = sha(wt);
     await install("rainbow", { ...opts(s), components: { ...ALL_COMPONENTS, terminal: true } });
     const on = JSON.parse(Deno.readTextFileSync(wt));
-    assertEquals(on.profiles.defaults.font, { face: "JetBrainsMono Nerd Font", size: 15 });
+    assertEquals(on.profiles.defaults.font, { face: "JetBrainsMono Nerd Font", size: 14 });
     assertEquals(on.profiles.list[0].font, undefined);
     assertEquals(on.profiles.list[1].font, { weight: "normal" }, "only face and size go");
     assertEquals([on.profiles.list[2].fontFace, on.profiles.list[2].fontSize], [undefined, undefined]);
@@ -630,6 +678,54 @@ Deno.test("a symlinked settings.json edited since install: the link comes back, 
     const saved = `${s.settings}.cc-starship-edits.json`;
     assertEquals(JSON.parse(Deno.readTextFileSync(saved)), { model: "opus", theme: "dark" });
     assert(report.some((l) => l.includes(saved)), report.join("\n"));
+  } finally {
+    s.restore();
+  }
+});
+
+Deno.test("blocks written by an older version are refreshed on the next apply", async () => {
+  const s = sandbox();
+  try {
+    const cmux = join(s.home, "config.ghostty");
+    Deno.writeTextFileSync(cmux, "theme = x\n");
+    Deno.env.set("CC_STARSHIP_TERMINALS", cmux);
+    const before = sha(cmux);
+    await install("rainbow", { ...opts(s), components: { ...ALL_COMPONENTS, terminal: true } });
+    // Pretend an older version wrote size 15: in the file and in the manifest's record.
+    const manifestPath = join(s.installDir, "manifest.json");
+    const old = (x: string) => x.replaceAll("font-size = 14", "font-size = 15");
+    Deno.writeTextFileSync(cmux, old(Deno.readTextFileSync(cmux)));
+    Deno.writeTextFileSync(manifestPath, old(Deno.readTextFileSync(manifestPath)));
+    await setTheme("ember");
+    const text = Deno.readTextFileSync(cmux);
+    assertStringIncludes(text, "font-size = 14");
+    assert(!text.includes("font-size = 15"), text);
+    assertEquals(text.match(/cc-starship terminal >>>/g)?.length, 1, "one block, not two");
+    await uninstall();
+    assertEquals(sha(cmux), before);
+  } finally {
+    s.restore();
+  }
+});
+
+Deno.test("Windows Terminal font from an older version is brought up to date, prior fonts kept", async () => {
+  const s = sandbox();
+  try {
+    const wt = join(s.home, "settings.json.wt.json");
+    Deno.writeTextFileSync(wt, JSON.stringify(wtSettings, null, 4) + "\n");
+    Deno.env.set("CC_STARSHIP_TERMINALS", wt);
+    const before = sha(wt);
+    await install("rainbow", { ...opts(s), components: { ...ALL_COMPONENTS, terminal: true } });
+    const data = JSON.parse(Deno.readTextFileSync(wt));
+    data.profiles.defaults.font.size = 15; // what an older version wrote
+    Deno.writeTextFileSync(wt, JSON.stringify(data, null, 4) + "\n");
+    await setTheme("ember");
+    assertEquals(JSON.parse(Deno.readTextFileSync(wt)).profiles.defaults.font, {
+      face: "JetBrainsMono Nerd Font",
+      size: 14,
+    });
+    await uninstall();
+    assertEquals(sha(wt), before);
   } finally {
     s.restore();
   }

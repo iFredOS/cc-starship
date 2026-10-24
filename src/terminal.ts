@@ -4,7 +4,7 @@ import { windowsTerminalSettings } from "./fonts.ts";
 import { home, isWindows } from "./paths.ts";
 
 export const TERMINAL_FONT = "JetBrainsMono Nerd Font";
-export const TERMINAL_SIZE = 15;
+export const TERMINAL_SIZE = 14;
 
 /** Appended to cmux/Ghostty configs; `font-family = ""` clears earlier fallbacks first. */
 export const GHOSTTY_LINES = [

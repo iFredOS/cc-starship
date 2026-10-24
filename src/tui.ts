@@ -27,7 +27,7 @@ import { HOOK_COST } from "./hook.ts";
 import { isWindows, paths } from "./paths.ts";
 import { TERMINAL_FONT, TERMINAL_SIZE } from "./terminal.ts";
 import { allPresets, DEFAULT_PRESET, findPreset, type Preset } from "./presets.ts";
-import { box, gridShape, header, keys, looksGrid, paint, type Theme, themeOf } from "./panel.ts";
+import { box, fitView, gridShape, header, keys, looksGrid, paint, type Theme, themeOf } from "./panel.ts";
 import {
   DEFAULT_HOOK_FROM,
   DEFAULT_PREFS,
@@ -157,9 +157,7 @@ export function componentLines(info: PanelInfo, selected: number, theme = defaul
     }   ${dim("silent (0 tokens) until context, 5h or 7d gets there")}`,
     `${box(c.memory)} Shell memory                ${
       dim(
-        `new tabs open in your last folder; no duplicate history${
-          isWindows ? " (with the Starship prompt)" : ""
-        }`,
+        "new tabs open in your last folder; no duplicate history",
       )
     }`,
     `${box(c.terminal)} Terminal settings           ${
@@ -275,9 +273,20 @@ export async function runUi(): Promise<number> {
   // The panel takes the colors of the look under the cursor.
   const theme = () => themeOf(presets[index]);
   const inUse = () => (state ? findPreset(state.theme)?.id : undefined);
-  const footer = (pairs: [string, string][]) => ["", message ? ` ${message}` : "", keys(pairs, theme())];
+  const height = () => {
+    try {
+      return Deno.consoleSize().rows;
+    } catch {
+      return 40;
+    }
+  };
+  const footer = (pairs: [string, string][], roomy = true) => [
+    ...(roomy ? [""] : []),
+    message ? ` ${message}` : "",
+    keys(pairs, theme()),
+  ];
 
-  const looks = () => {
+  const looks = ({ explain, roomy }: { explain: boolean; roomy: boolean }) => {
     const t = theme(), p = presets[index], w = width();
     const mark = inUse() ? ` · ${paint(t.second, "●")}${paint(t.dim, " in use")}` : "";
     const legend = `${paint("#fabd2f", "amber")}${paint(t.dim, " at 70% · ")}${paint("#fb4934", "red ▲")}${
@@ -289,7 +298,7 @@ export async function runUi(): Promise<number> {
         theme: t,
         right: paint(t.dim, `${index + 1} of ${presets.length}`) + mark,
       }),
-      "",
+      ...(roomy ? [""] : []),
       ...box(
         `Preview · ${p.name}`,
         info
@@ -297,8 +306,7 @@ export async function runUi(): Promise<number> {
           : [paint(t.dim, "(the preview appears once Starship is installed)")],
         { width: w, theme: t, right: legend },
       ),
-      "",
-      fontHint(t),
+      ...(roomy ? ["", fontHint(t)] : []),
       state ? "" : ` ${paint(t.dim, "Not installed yet: Enter installs with the look under the cursor.")}`,
       ...footer([
         ["↑↓←→", "choose"],
@@ -307,11 +315,11 @@ export async function runUi(): Promise<number> {
         ...(state ? [["U", "uninstall"] as [string, string]] : []),
         ["Tab", "components"],
         ["Q", "quit"],
-      ]),
+      ], roomy),
     ];
   };
 
-  const componentsScreen = () => {
+  const componentsScreen = ({ roomy }: { roomy: boolean }) => {
     const t = theme();
     const intro = state
       ? "Switch parts on or off; changes apply right away."
@@ -322,19 +330,15 @@ export async function runUi(): Promise<number> {
         "",
         ...componentLines({ installed: !!state, components, starship: info, latest, fonts, prefs }, row, t),
       ], { width: width(), theme: t }),
-      "",
-      fontHint(t),
+      ...(roomy ? ["", fontHint(t)] : []),
       ...footer([
         ["↑↓", "choose"],
         ["Space", "on/off or change"],
         ["⏎", "update Starship · pick a font"],
-        [
-          "X",
-          "remove Starship",
-        ],
+        ["X", "remove Starship"],
         ["Tab", "looks"],
         ["Q", "quit"],
-      ]),
+      ], roomy),
     ];
   };
 
@@ -370,9 +374,23 @@ export async function runUi(): Promise<number> {
   };
 
   const draw = () => {
-    const body = screen === "looks" ? looks() : screen === "components" ? componentsScreen() : fontsScreen();
-    const top = header({ theme: theme(), screen, version: VERSION, width: width() });
-    write(`${ESC}[H${ESC}[2J${[...top, ...body].join("\r\n")}`);
+    // Taller than the window, the terminal would scroll the top away: explanations go first,
+    // then the spacing.
+    const top = (roomy: boolean) =>
+      header({ theme: theme(), screen, version: VERSION, width: width(), roomy });
+    const layouts = screen === "looks"
+      ? [
+        () => [...top(true), ...looks({ explain, roomy: true })],
+        () => [...top(true), ...looks({ explain: false, roomy: true })],
+        () => [...top(false), ...looks({ explain: false, roomy: false })],
+      ]
+      : screen === "components"
+      ? [
+        () => [...top(true), ...componentsScreen({ roomy: true })],
+        () => [...top(false), ...componentsScreen({ roomy: false })],
+      ]
+      : [() => [...top(true), ...fontsScreen()]];
+    write(`${ESC}[H${ESC}[2J${fitView(layouts, height()).join("\r\n")}`);
   };
 
   const prompt = async (text: string) => {

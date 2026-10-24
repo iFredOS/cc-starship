@@ -10,7 +10,7 @@ import { downloadStarship, findStarship, latestVersion, runUpdate, updatePlan } 
 import { renderBar } from "./statusline.ts";
 import type { Clock, Language, Prefs } from "./when.ts";
 
-export const VERSION = "0.1.0";
+export const VERSION = "1.0.0";
 const compiled = basename(Deno.execPath()).startsWith("cc-starship");
 
 /** Claude Code's current statusLine setting, if readable. */

@@ -1,6 +1,6 @@
 import { assert, assertEquals, assertStringIncludes } from "@std/assert";
 import { contrast, rgb } from "../src/color.ts";
-import { box, clip, header, keys, looksGrid, swatch, themeOf, visibleWidth } from "../src/panel.ts";
+import { box, clip, fitView, header, keys, looksGrid, swatch, themeOf, visibleWidth } from "../src/panel.ts";
 import { allPresets, findPreset } from "../src/presets.ts";
 import { stripAnsi } from "./helpers.ts";
 
@@ -81,4 +81,15 @@ Deno.test("header: breathing room, the logo pill, the version, tabs as chips", (
 Deno.test("key hints: each key as a keycap with its label", () => {
   const line = keys([["↑↓", "choose"], ["⏎", "use this look"], ["Q", "quit"]], theme);
   assertEquals(stripAnsi(line).replace(/\s+/g, " ").trim(), "↑↓ choose ⏎ use this look Q quit");
+});
+
+Deno.test("fitView: the first layout that fits the window; never the top cut off", () => {
+  const layout = (n: number, tag: string) => () => Array.from({ length: n }, (_, i) => `${tag}${i}`);
+  const layouts = [layout(40, "full"), layout(30, "short"), layout(20, "compact")];
+  assertEquals(fitView(layouts, 45)[0], "full0");
+  assertEquals(fitView(layouts, 32)[0], "short0", "explanations dropped first");
+  assertEquals(fitView(layouts, 25)[0], "compact0");
+  const tiny = fitView(layouts, 10);
+  assertEquals(tiny.length, 10);
+  assertEquals(tiny[0], "compact0", "the top line always shows");
 });
