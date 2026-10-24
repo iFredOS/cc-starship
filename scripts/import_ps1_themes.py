@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """One-off import of the 38 themes from the Windows statusline-command.ps1
 (C:\\Users\\you\\.claude) into presets/presets.json, next to the built-in
-rainbow and gray presets.
+rainbow and fusain presets.
 
 Each PowerShell theme gives a background and text color to seven roles:
 model (m), version (v), directory (d), git (g), context (cx, text always cream),
@@ -46,7 +46,8 @@ BUILTINS = [
             [["#d65d0e", "#d79921", "#689d6a", "#458588"], ["#d79921", "#689d6a", "#458588"],
              ["#665c54", "#504945", "#3c3836", "#32302f"]],
             ["#d65d0e", "#d79921", "#689d6a", "#458588", "#665c54", "#3c3836"]),
-    builtin("gray", "Gray", "#d78770", "#ebdbb2",
+    # Fusain (French for drawing charcoal): the author's own warm-gray design, shipped first.
+    builtin("fusain", "Fusain", "#d78770", "#ebdbb2",
             [["#282828", "#3d3937", "#514b45", "#665c54"], ["#282828", "#47423e", "#665c54"],
              ["#3c3836", "#504945", "#665c54", "#7c6f64"]],
             ["#282828", "#3c3836", "#47423e", "#504945", "#665c54", "#3c3836"]),
@@ -89,8 +90,8 @@ def convert(name, f):
 # Shipped presets, after a design review of all 40 (contrast, separation,
 # duplicates): the 11 recommended plus 4 alternates, grouped by look.
 KEEP = [
-    "rainbow", "sunset-v1", "autumn", "ocean-v1", "jewel", "mocha-v1", "nord-v1", "berry", "tidepool",
-    "synthwave", "gray", "neon", "ice", "ember", "tokyo-night",
+    "fusain", "rainbow", "sunset-v1", "autumn", "ocean-v1", "jewel", "mocha-v1", "nord-v1", "berry",
+    "tidepool", "synthwave", "neon", "ice", "ember", "tokyo-night",
 ]
 
 # Review fixes, as {preset: {old background: new background}}.
@@ -98,7 +99,7 @@ FIXES = {
     # Cream text on gruvbox yellow/aqua was 2.2:1 and 2.8:1; gruvbox's deeper tones keep it cream.
     "rainbow": {"#d79921": "#a86b10", "#689d6a": "#427b58"},
     # Near-black segments vanished against a dark terminal, taking their rounded caps with them.
-    "gray": {"#282828": "#32302f"},
+    "fusain": {"#282828": "#32302f"},
     "ocean-v1": {"#071e37": "#0d3b66"},
     "mocha-v1": {"#181825": "#313244", "#1e1e2e": "#313244"},
 }

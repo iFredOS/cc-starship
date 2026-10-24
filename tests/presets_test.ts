@@ -1,6 +1,6 @@
 import { assert, assertEquals } from "@std/assert";
 import { join } from "node:path";
-import { allPresets, barConfig, findPreset, shellConfig } from "../src/presets.ts";
+import { allPresets, barConfig, DEFAULT_PRESET, findPreset, shellConfig } from "../src/presets.ts";
 import { tempDir } from "./helpers.ts";
 
 const starship = (config: string, env: Record<string, string> = {}) => {
@@ -19,7 +19,14 @@ Deno.test("the 15 reviewed presets ship, with unique ids", () => {
   const ids = allPresets().map((p) => p.id);
   assertEquals(ids.length, 15);
   assertEquals(new Set(ids).size, ids.length);
-  assert(findPreset("rainbow") && findPreset("gray") && findPreset("ember"));
+  assert(findPreset("rainbow") && findPreset("fusain") && findPreset("ember"));
+});
+
+Deno.test("Fusain, the author's own look, comes first and is the default", () => {
+  assertEquals(allPresets()[0].id, "fusain");
+  assertEquals(allPresets()[0].name, "Fusain");
+  assertEquals(DEFAULT_PRESET, "fusain");
+  assertEquals(findPreset("gray")?.id, "fusain", "installs and scripts that said gray keep working");
 });
 
 Deno.test("neighbouring segments never share a background", () => {
@@ -49,7 +56,7 @@ Deno.test("shell config uses the preset's segment colors", () => {
 
 Deno.test("Windows binary paths get forward slashes in the shell config", () => {
   const config = shellConfig(
-    findPreset("gray")!,
+    findPreset("fusain")!,
     "C:\\Users\\me\\AppData\\Local\\cc-starship\\bin\\x.exe",
   );
   assert(config.includes("shell = ['C:/Users/me/AppData/Local/cc-starship/bin/x.exe', 'usage']"));

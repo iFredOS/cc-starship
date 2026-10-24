@@ -93,7 +93,7 @@ Deno.test("install, switch theme, uninstall: existing files come back byte-ident
 Deno.test("files the installer created are removed again", async () => {
   const s = sandbox();
   try {
-    await install("gray", opts(s));
+    await install("fusain", opts(s));
     assert(exists(s.starship) && exists(s.settings) && exists(s.zshrc));
     await uninstall();
     for (const f of [s.starship, s.settings, s.zshrc]) assert(!exists(f), f);

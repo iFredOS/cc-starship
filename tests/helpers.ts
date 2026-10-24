@@ -24,7 +24,7 @@ export function bar(
     prefs?: BarOptions["prefs"];
   } = {},
 ): string {
-  return barWith(findPreset(opts.preset ?? "gray") as Preset, payload, opts);
+  return barWith(findPreset(opts.preset ?? "fusain") as Preset, payload, opts);
 }
 
 /** Like `bar`, with a preset object (for presets that don't ship). */

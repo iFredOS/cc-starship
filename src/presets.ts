@@ -22,14 +22,17 @@ const PROMPT_COLORS = {
   color_yellow: "#d79921",
 };
 
-export const DEFAULT_PRESET = "rainbow";
+export const DEFAULT_PRESET = "fusain";
+/** Old preset ids that still work (Fusain was called Gray). */
+const ALIASES: Record<string, string> = { gray: "fusain" };
 
 export function allPresets(): Preset[] {
   return PRESETS;
 }
 
 export function findPreset(id: string): Preset | undefined {
-  return PRESETS.find((p) => p.id === id);
+  const wanted = ALIASES[id] ?? id;
+  return PRESETS.find((p) => p.id === wanted);
 }
 
 function palette(name: string, colors: Record<string, string>): string {

@@ -73,7 +73,7 @@ Deno.test("70%+ shows an amber chip, 90%+ a red chip with ▲, then the segment 
       context_window: { used_percentage: 95 },
       rate_limits: { five_hour: { used_percentage: 75 }, seven_day: { used_percentage: 10 } },
     }),
-    { preset: "gray" },
+    { preset: "fusain" },
   );
   const chip = (bg: string, text: string) =>
     `\x1b[48;2;${rgb(bg)}m\x1b[38;2;${rgb("#1d2021")}m\x1b[1m ${text} \x1b[22m`;
@@ -82,7 +82,7 @@ Deno.test("70%+ shows an amber chip, 90%+ a red chip with ▲, then the segment 
   assert(!out.includes(`${rgb("#fabd2f")}m\x1b[38;2;${rgb("#1d2021")}m\x1b[1m 10%`));
   // After the red chip, the context segment's own background and text color come back.
   const gray = JSON.parse(Deno.readTextFileSync(new URL("../presets/presets.json", import.meta.url)))
-    .find((p: { id: string }) => p.id === "gray");
+    .find((p: { id: string }) => p.id === "fusain");
   const seg = gray.bar.lines[2][0];
   assertStringIncludes(out, `▲95% \x1b[22m\x1b[48;2;${rgb(seg.bg)}m\x1b[38;2;${rgb(seg.fg)}m`);
   assertStringIncludes(stripAnsi(out), "CTX  ▲95%  /");
@@ -90,7 +90,7 @@ Deno.test("70%+ shows an amber chip, 90%+ a red chip with ▲, then the segment 
 
 Deno.test("accent icons fall back to the segment text when they'd be hard to see", () => {
   const gray = JSON.parse(Deno.readTextFileSync(new URL("../presets/presets.json", import.meta.url)))
-    .find((p: { id: string }) => p.id === "gray");
+    .find((p: { id: string }) => p.id === "fusain");
   const seg = gray.bar.lines[0][0];
   // An accent equal to the model segment's background would be invisible.
   const out = barWith({ ...gray, bar: { ...gray.bar, accent: seg.bg } }, fixture);

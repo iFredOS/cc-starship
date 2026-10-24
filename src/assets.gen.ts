@@ -7,6 +7,94 @@ export const BAR_TEMPLATE: string = "\"$schema\" = 'https://starship.rs/config-s
 
 export const PRESETS: Preset[] = [
   {
+    "id": "fusain",
+    "name": "Fusain",
+    "source": "built-in",
+    "bar": {
+      "accent": "#d78770",
+      "lines": [
+        [
+          {
+            "bg": "#32302f",
+            "fg": "#ebdbb2"
+          },
+          {
+            "bg": "#3d3937",
+            "fg": "#ebdbb2"
+          },
+          {
+            "bg": "#514b45",
+            "fg": "#ebdbb2"
+          },
+          {
+            "bg": "#665c54",
+            "fg": "#ebdbb2"
+          }
+        ],
+        [
+          {
+            "bg": "#32302f",
+            "fg": "#ebdbb2"
+          },
+          {
+            "bg": "#47423e",
+            "fg": "#ebdbb2"
+          },
+          {
+            "bg": "#665c54",
+            "fg": "#ebdbb2"
+          }
+        ],
+        [
+          {
+            "bg": "#3c3836",
+            "fg": "#ebdbb2"
+          },
+          {
+            "bg": "#504945",
+            "fg": "#ebdbb2"
+          },
+          {
+            "bg": "#665c54",
+            "fg": "#ebdbb2"
+          },
+          {
+            "bg": "#7c6f64",
+            "fg": "#ebdbb2"
+          }
+        ]
+      ]
+    },
+    "shell": {
+      "segments": [
+        {
+          "bg": "#32302f",
+          "fg": "#ebdbb2"
+        },
+        {
+          "bg": "#3c3836",
+          "fg": "#ebdbb2"
+        },
+        {
+          "bg": "#47423e",
+          "fg": "#ebdbb2"
+        },
+        {
+          "bg": "#504945",
+          "fg": "#ebdbb2"
+        },
+        {
+          "bg": "#665c54",
+          "fg": "#ebdbb2"
+        },
+        {
+          "bg": "#3c3836",
+          "fg": "#ebdbb2"
+        }
+      ]
+    }
+  },
+  {
     "id": "rainbow",
     "name": "Rainbow",
     "source": "built-in",
@@ -882,94 +970,6 @@ export const PRESETS: Preset[] = [
         {
           "bg": "#6e1e5a",
           "fg": "#fff096"
-        }
-      ]
-    }
-  },
-  {
-    "id": "gray",
-    "name": "Gray",
-    "source": "built-in",
-    "bar": {
-      "accent": "#d78770",
-      "lines": [
-        [
-          {
-            "bg": "#32302f",
-            "fg": "#ebdbb2"
-          },
-          {
-            "bg": "#3d3937",
-            "fg": "#ebdbb2"
-          },
-          {
-            "bg": "#514b45",
-            "fg": "#ebdbb2"
-          },
-          {
-            "bg": "#665c54",
-            "fg": "#ebdbb2"
-          }
-        ],
-        [
-          {
-            "bg": "#32302f",
-            "fg": "#ebdbb2"
-          },
-          {
-            "bg": "#47423e",
-            "fg": "#ebdbb2"
-          },
-          {
-            "bg": "#665c54",
-            "fg": "#ebdbb2"
-          }
-        ],
-        [
-          {
-            "bg": "#3c3836",
-            "fg": "#ebdbb2"
-          },
-          {
-            "bg": "#504945",
-            "fg": "#ebdbb2"
-          },
-          {
-            "bg": "#665c54",
-            "fg": "#ebdbb2"
-          },
-          {
-            "bg": "#7c6f64",
-            "fg": "#ebdbb2"
-          }
-        ]
-      ]
-    },
-    "shell": {
-      "segments": [
-        {
-          "bg": "#32302f",
-          "fg": "#ebdbb2"
-        },
-        {
-          "bg": "#3c3836",
-          "fg": "#ebdbb2"
-        },
-        {
-          "bg": "#47423e",
-          "fg": "#ebdbb2"
-        },
-        {
-          "bg": "#504945",
-          "fg": "#ebdbb2"
-        },
-        {
-          "bg": "#665c54",
-          "fg": "#ebdbb2"
-        },
-        {
-          "bg": "#3c3836",
-          "fg": "#ebdbb2"
         }
       ]
     }
