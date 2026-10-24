@@ -23,7 +23,14 @@ import { HOOK_COST, hookOutput, pruneSnapshots, snapshotFile } from "./hook.ts";
 import { ompNotes } from "./omp.ts";
 import { paths, readState } from "./paths.ts";
 import { allPresets, DEFAULT_PRESET, findPreset } from "./presets.ts";
-import { findStarship, latestVersion, runUpdate, uninstallPlan, updatePlan } from "./starship.ts";
+import {
+  findStarship,
+  latestVersion,
+  type Manager,
+  runUpdate,
+  uninstallPlan,
+  updatePlan,
+} from "./starship.ts";
 import { readAccountEmail, renderBar } from "./statusline.ts";
 import { runUi } from "./tui.ts";
 import { usageText } from "./usage.ts";
@@ -47,6 +54,15 @@ Claude Code status bar and shell prompt, rendered by Starship.
   cc-starship usage            (run by the shell prompt) print Claude usage
   cc-starship hook             (run by Claude Code) tell Claude its usage with each prompt`;
 
+/** How Starship got there, for `status`. */
+const HOW: Record<Manager, string> = {
+  brew: "via brew",
+  winget: "via winget",
+  scoop: "via Scoop",
+  ours: "downloaded by cc-starship",
+  unknown: "installed by hand",
+};
+
 async function status(): Promise<number> {
   const state = readInstalled();
   const info = findStarship();
@@ -67,7 +83,7 @@ async function status(): Promise<number> {
   }
   const update = info && latest && updatePlan(info, latest) ? ` (update to ${latest} available)` : "";
   console.log(
-    `starship:   ${info ? `${info.version} via ${info.managedBy}, ${info.path}${update}` : "not found"}`,
+    `starship:   ${info ? `${info.version} ${HOW[info.managedBy]}, ${info.path}${update}` : "not found"}`,
   );
   console.log(`nerd fonts: ${fontFamilies(detectNerdFonts()).join(", ") || "none found"}`);
   for (const note of ompNotes(shellProfiles(state ?? undefined), claudeStatusLine())) {
