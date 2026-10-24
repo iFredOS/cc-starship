@@ -1,5 +1,6 @@
 import { assert, assertEquals } from "@std/assert";
 import { componentLines, previewBlock } from "../src/tui.ts";
+import type { Prefs } from "../src/when.ts";
 import { stripAnsi } from "./helpers.ts";
 
 const sample = ["BAR1", "BAR2", "BAR3", "PROMPT"];
@@ -46,6 +47,8 @@ const base = {
   starship: { path: "/opt/homebrew/bin/starship", version: "1.27.0", managedBy: "brew" as const },
   latest: "1.27.0" as string | null | undefined,
   fonts: ["JetBrainsMono Nerd Font"],
+  prefs: { language: "auto", clock: "auto" } as Prefs,
+  locale: "en-CA",
 };
 
 Deno.test("components panel: switches, Starship version and font", () => {
@@ -69,4 +72,15 @@ Deno.test("components panel: update available, missing Starship, usage needing t
   assert(noShell.includes("[ ] Shell prompt") && noShell.includes("needs the shell prompt"), noShell);
   const noFont = componentLines({ ...base, fonts: [] }, 4).map(stripAnsi).join("\n");
   assert(noFont.includes("none found"), noFont);
+});
+
+Deno.test("components panel: language and clock rows show the choice and a sample", () => {
+  const auto = componentLines(base, 5).map(stripAnsi).join("\n");
+  assert(auto.includes("Language") && auto.includes("Auto (English)"), auto);
+  assert(auto.includes("Clock") && auto.includes("Auto (12 h)"), auto);
+  const fr = componentLines({ ...base, prefs: { language: "fr-CA", clock: "24h" } }, 5).map(stripAnsi).join(
+    "\n",
+  );
+  assert(fr.includes("Français (Québec)") && fr.includes("24 h"), fr);
+  assert(/demain \d+ h/.test(fr), "sample reset in the chosen format: " + fr);
 });

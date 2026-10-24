@@ -5,6 +5,7 @@ import { createHash } from "node:crypto";
 import { basename, dirname, extname, join } from "node:path";
 import { installDir, isWindows, paths, readState, type State } from "./paths.ts";
 import { barConfig, findPreset, type Preset, shellConfig } from "./presets.ts";
+import { DEFAULT_PREFS, type Prefs } from "./when.ts";
 
 const MARK_START = "# >>> starship-statusline >>>";
 const MARK_END = "# <<< starship-statusline <<<";
@@ -208,12 +209,14 @@ export const ALL_COMPONENTS: Components = { bar: true, shell: true, usage: true 
 export interface InstalledState extends State {
   bin: string;
   components: Components;
+  /** Language and clock for dates in the status bar. */
+  prefs: Prefs;
 }
 
 /** The installed state, or null when not installed. */
 export function readInstalled(): InstalledState | null {
   const s = readState() as InstalledState | null;
-  return s ? { ...s, components: s.components ?? ALL_COMPONENTS } : null;
+  return s ? { ...s, components: s.components ?? ALL_COMPONENTS, prefs: s.prefs ?? DEFAULT_PREFS } : null;
 }
 
 function preset(id: string): Preset {
@@ -315,10 +318,12 @@ function apply(state: InstalledState, manifest: Manifest, report: string[]): voi
 
 export async function install(
   presetId: string,
-  o: InstallOptions & { components?: Components },
+  o: InstallOptions & { components?: Components; prefs?: Prefs },
 ): Promise<string[]> {
   preset(presetId);
-  const components = o.components ?? readInstalled()?.components ?? ALL_COMPONENTS;
+  const previous = readInstalled();
+  const components = o.components ?? previous?.components ?? ALL_COMPONENTS;
+  const prefs = o.prefs ?? previous?.prefs ?? DEFAULT_PREFS;
   if (components.bar) readSettings(paths.claudeSettings()); // throws before anything is written
   const report: string[] = [];
   const manifest = readManifest() ?? { version: 1, installedAt: new Date().toISOString(), profiles: [] };
@@ -331,7 +336,7 @@ export async function install(
     report.push(`installed ${o.bin}`);
   }
 
-  apply({ theme: presetId, starship: o.starship, bin: o.bin, components }, manifest, report);
+  apply({ theme: presetId, starship: o.starship, bin: o.bin, components, prefs }, manifest, report);
   // A later Claude Code session or shell picks everything up; nothing to restart now.
   return await Promise.resolve(report);
 }
@@ -358,6 +363,13 @@ export async function setComponents(components: Components): Promise<string[]> {
   const report: string[] = [];
   apply({ ...state, components }, manifest, report);
   return await Promise.resolve(report);
+}
+
+/** Saves the language and clock for dates; only the installed state changes. */
+export async function setPrefs(prefs: Prefs): Promise<void> {
+  const { state } = installed();
+  writeText(paths.state(), JSON.stringify({ ...state, prefs }, null, 2) + "\n");
+  await Promise.resolve();
 }
 
 export async function uninstall(): Promise<string[]> {

@@ -1,7 +1,7 @@
 import { assert, assertEquals, assertRejects, assertStringIncludes } from "@std/assert";
 import { createHash } from "node:crypto";
 import { join } from "node:path";
-import { install, setComponents, setTheme, uninstall } from "../src/engine.ts";
+import { install, readInstalled, setComponents, setPrefs, setTheme, uninstall } from "../src/engine.ts";
 import { tempDir } from "./helpers.ts";
 
 const sha = (path: string) => {
@@ -216,6 +216,22 @@ Deno.test("components: bar only leaves the shell alone; toggling restores each p
 
     await uninstall();
     assertEquals([s.starship, s.settings, s.zshrc].map(sha), [starship0, settings0, zshrc0]);
+  } finally {
+    s.restore();
+  }
+});
+
+Deno.test("language and clock are saved with the install and touch no config file", async () => {
+  const s = sandbox();
+  try {
+    await install("rainbow", { ...opts(s), prefs: { language: "fr-CA", clock: "auto" } });
+    assertEquals(readInstalled()?.prefs, { language: "fr-CA", clock: "auto" });
+    const files = [s.starship, s.settings, s.zshrc].map(sha);
+    await setPrefs({ language: "en", clock: "12h" });
+    assertEquals(readInstalled()?.prefs, { language: "en", clock: "12h" });
+    assertEquals([s.starship, s.settings, s.zshrc].map(sha), files);
+    await install("ember", opts(s));
+    assertEquals(readInstalled()?.prefs, { language: "en", clock: "12h" }, "a reinstall keeps them");
   } finally {
     s.restore();
   }

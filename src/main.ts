@@ -1,7 +1,7 @@
 // starship-statusline: installer, uninstaller and runtime for a Starship-rendered
 // Claude Code status bar and matching shell prompt.
 import { doInstall, ensureStarship, previewLines, runUninstall, VERSION } from "./app.ts";
-import { readInstalled, setComponents, setTheme } from "./engine.ts";
+import { readInstalled, setComponents, setPrefs, setTheme } from "./engine.ts";
 import {
   detectNerdFonts,
   fontFamilies,
@@ -17,6 +17,7 @@ import { findStarship, latestVersion, runUpdate, uninstallPlan, updatePlan } fro
 import { readAccountEmail, renderBar } from "./statusline.ts";
 import { runUi } from "./tui.ts";
 import { usageText } from "./usage.ts";
+import { DEFAULT_PREFS, type Prefs, resolvePrefs } from "./when.ts";
 
 const HELP = `starship-statusline ${VERSION}
 Claude Code status bar and shell prompt, rendered by Starship.
@@ -31,6 +32,7 @@ Claude Code status bar and shell prompt, rendered by Starship.
   starship-statusline components [bar|shell|usage] [on|off]
   starship-statusline font list | install ID | remove ID
   starship-statusline starship update | remove
+  starship-statusline prefs [language auto|en|fr-CA] [clock auto|24h|12h]
   starship-statusline statusline       (run by Claude Code) render the status bar from stdin
   starship-statusline usage            (run by the shell prompt) print Claude usage`;
 
@@ -68,6 +70,24 @@ async function status(): Promise<number> {
       }`,
     );
   }
+  return 0;
+}
+
+async function prefsCommand(args: string[]): Promise<number> {
+  const state = readInstalled();
+  if (!state) throw new Error("not installed yet: run install first");
+  const prefs: Prefs = { ...state.prefs };
+  for (let i = 0; i < args.length; i += 2) {
+    const [key, value] = [args[i], args[i + 1]];
+    if (key === "language" && ["auto", "en", "fr-CA"].includes(value)) {
+      prefs.language = value as Prefs["language"];
+    } else if (key === "clock" && ["auto", "24h", "12h"].includes(value)) {
+      prefs.clock = value as Prefs["clock"];
+    } else throw new Error("usage: prefs [language auto|en|fr-CA] [clock auto|24h|12h]");
+  }
+  if (args.length) await setPrefs(prefs);
+  const r = resolvePrefs(prefs);
+  console.log(`language ${prefs.language} (${r.language}), clock ${prefs.clock} (${r.clock})`);
   return 0;
 }
 
@@ -146,6 +166,7 @@ async function statusline(): Promise<void> {
     columns,
     accountEmail: readAccountEmail(paths.claudeAccount()),
     usageFile: paths.usage(),
+    prefs: resolvePrefs(readInstalled()?.prefs ?? DEFAULT_PREFS),
   });
   await Deno.stdout.write(new TextEncoder().encode(out));
 }
@@ -198,6 +219,8 @@ export async function main(args: string[]): Promise<number> {
       return 0;
     case "status":
       return await status();
+    case "prefs":
+      return await prefsCommand(args.slice(1));
     case "components":
       return await componentsCommand(args.slice(1));
     case "font":
@@ -207,7 +230,8 @@ export async function main(args: string[]): Promise<number> {
     case "preview": {
       const preset = findPreset(args[1] ?? readState()?.theme ?? DEFAULT_PRESET);
       if (!preset) throw new Error(`unknown preset "${args[1]}"`);
-      console.log(previewLines(preset, findStarship()?.path ?? "starship").join("\n"));
+      const prefs = resolvePrefs(readInstalled()?.prefs ?? DEFAULT_PREFS);
+      console.log(previewLines(preset, findStarship()?.path ?? "starship", prefs).join("\n"));
       return 0;
     }
     case "--version":

@@ -5,7 +5,14 @@
 //   update or remove Starship, and install a Nerd Font.
 // Q or Esc quits without changing anything.
 import { doInstall, ensureStarship, previewLines, runUninstall, VERSION } from "./app.ts";
-import { ALL_COMPONENTS, type Components, readInstalled, setComponents, setTheme } from "./engine.ts";
+import {
+  ALL_COMPONENTS,
+  type Components,
+  readInstalled,
+  setComponents,
+  setPrefs,
+  setTheme,
+} from "./engine.ts";
 import {
   detectNerdFonts,
   fontFamilies,
@@ -18,6 +25,7 @@ import {
 } from "./fonts.ts";
 import { isWindows, paths } from "./paths.ts";
 import { allPresets, DEFAULT_PRESET, type Preset } from "./presets.ts";
+import { DEFAULT_PREFS, formatWhen, type Prefs, resolvePrefs } from "./when.ts";
 import {
   findStarship,
   latestVersion,
@@ -75,13 +83,28 @@ export interface PanelInfo {
   latest: string | null | undefined;
   /** Nerd Font families found on this machine. */
   fonts: string[];
+  prefs: Prefs;
+  /** System locale, for what "Auto" means (tests pass one). */
+  locale?: string;
 }
 
-const ROWS = ["bar", "shell", "usage", "starship", "font"] as const;
+const ROWS = ["bar", "shell", "usage", "starship", "font", "language", "clock"] as const;
+
+const LANGUAGES = ["auto", "en", "fr-CA"] as const;
+const CLOCKS = ["auto", "24h", "12h"] as const;
+const LANGUAGE_NAMES = { en: "English", "fr-CA": "Français (Québec)" };
+const CLOCK_NAMES = { "24h": "24 h", "12h": "12 h" };
 
 /** The Components screen's rows, `selected` marked. */
 export function componentLines(info: PanelInfo, selected: number): string[] {
   const c = info.components;
+  const resolved = resolvePrefs(info.prefs, info.locale);
+  const now = new Date();
+  const sample = formatWhen(
+    new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 18),
+    now,
+    resolved,
+  );
   const box = (on: boolean) => (on ? green("[x]") : "[ ]");
   const s = info.starship;
   const starshipStatus = !s
@@ -102,6 +125,14 @@ export function componentLines(info: PanelInfo, selected: number): string[] {
       info.fonts.length
         ? green(fontFamilies(info.fonts).slice(0, 3).join(", "))
         : yellow("none found: Enter to pick one")
+    }`,
+    `    Language                    ${
+      info.prefs.language === "auto"
+        ? `Auto (${LANGUAGE_NAMES[resolved.language]})`
+        : LANGUAGE_NAMES[info.prefs.language]
+    }   ${dim(`dates look like: ${sample}`)}`,
+    `    Clock                       ${
+      info.prefs.clock === "auto" ? `Auto (${CLOCK_NAMES[resolved.clock]})` : CLOCK_NAMES[info.prefs.clock]
     }`,
   ];
   return rows.map((r, i) => (i === selected ? bold(`  ▸ `) + r : `    ${r}`));
@@ -161,6 +192,7 @@ export async function runUi(): Promise<number> {
   const presets = allPresets();
   let state = readInstalled();
   let components: Components = state?.components ?? { ...ALL_COMPONENTS };
+  let prefs: Prefs = state?.prefs ?? DEFAULT_PREFS;
   let index = Math.max(0, presets.findIndex((p) => p.id === (state?.theme ?? DEFAULT_PRESET)));
   let screen: Screen = "looks";
   let row = 0;
@@ -172,7 +204,9 @@ export async function runUi(): Promise<number> {
   let explain = true;
   const previews = new Map<string, string[]>();
   const preview = (p: Preset) => {
-    if (!previews.has(p.id)) previews.set(p.id, previewLines(p, info?.path ?? "starship"));
+    if (!previews.has(p.id)) {
+      previews.set(p.id, previewLines(p, info?.path ?? "starship", resolvePrefs(prefs)));
+    }
     return previews.get(p.id)!;
   };
 
@@ -225,12 +259,14 @@ export async function runUi(): Promise<number> {
       ? "Switch parts on or off; changes apply right away."
       : "Choose what to install, then pick a look and press Enter.",
     "",
-    ...componentLines({ installed: !!state, components, starship: info, latest, fonts }, row),
+    ...componentLines({ installed: !!state, components, starship: info, latest, fonts, prefs }, row),
     "",
     fontHint(),
     "",
     message ||
-    dim("↑/↓ choose   Space on/off   Enter update Starship / pick a font   X remove Starship   Q quit"),
+    dim(
+      "↑/↓ choose   Space on/off or change   Enter update Starship / pick a font   X remove Starship   Q quit",
+    ),
   ];
 
   const ours = () => installedByUs().map((r) => r.id);
@@ -301,6 +337,14 @@ export async function runUi(): Promise<number> {
     if (key === "down") row = (row + 1) % ROWS.length;
     const name = ROWS[row];
     if (key === "space" && (name === "bar" || name === "shell" || name === "usage")) await toggle(name);
+    if (key === "space" && (name === "language" || name === "clock")) {
+      const next = name === "language"
+        ? { ...prefs, language: LANGUAGES[(LANGUAGES.indexOf(prefs.language) + 1) % LANGUAGES.length] }
+        : { ...prefs, clock: CLOCKS[(CLOCKS.indexOf(prefs.clock) + 1) % CLOCKS.length] };
+      if (state) await setPrefs(next);
+      prefs = next;
+      previews.clear();
+    }
     if (key === "enter" && name === "font") {
       screen = "fonts";
       fontRow = 0;
@@ -374,7 +418,7 @@ export async function runUi(): Promise<number> {
         message = green(`✓ ${p.name} is on: open a new terminal tab; Claude Code updates within a minute.`);
       } else {
         await run("Installing…", async (log) => {
-          await doInstall(p.id, true, log, components);
+          await doInstall(p.id, true, log, components, prefs);
           log(green(`Installed with ${p.name}. Open a new terminal tab, and restart Claude Code.`));
         });
       }

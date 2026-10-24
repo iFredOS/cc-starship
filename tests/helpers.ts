@@ -1,6 +1,6 @@
 import { join } from "node:path";
 import { barConfig, findPreset, type Preset } from "../src/presets.ts";
-import { renderBar } from "../src/statusline.ts";
+import { type BarOptions, renderBar } from "../src/statusline.ts";
 
 export const fixture = JSON.parse(
   Deno.readTextFileSync(new URL("../fixture.json", import.meta.url)),
@@ -16,7 +16,13 @@ export function tempDir(): string {
 /** Renders the bar for `payload` with `presetId`, in a throwaway config dir. */
 export function bar(
   payload: unknown,
-  opts: { preset?: string; columns?: number; email?: string; usageFile?: string } = {},
+  opts: {
+    preset?: string;
+    columns?: number;
+    email?: string;
+    usageFile?: string;
+    prefs?: BarOptions["prefs"];
+  } = {},
 ): string {
   return barWith(findPreset(opts.preset ?? "gray") as Preset, payload, opts);
 }
@@ -25,7 +31,7 @@ export function bar(
 export function barWith(
   preset: Preset,
   payload: unknown,
-  opts: { columns?: number; email?: string; usageFile?: string } = {},
+  opts: { columns?: number; email?: string; usageFile?: string; prefs?: BarOptions["prefs"] } = {},
 ): string {
   const dir = tempDir();
   const configPath = join(dir, "statusline.toml");
@@ -38,6 +44,7 @@ export function barWith(
       columns: opts.columns,
       accountEmail: opts.email ?? "you@example.com",
       usageFile: opts.usageFile ?? join(dir, "usage"),
+      prefs: opts.prefs,
     });
   } finally {
     Deno.removeSync(dir, { recursive: true });

@@ -5,6 +5,7 @@ import { isWindows, paths, readState } from "./paths.ts";
 import { barConfig, type Preset, shellConfig } from "./presets.ts";
 import { downloadStarship, findStarship, latestVersion, runUpdate, updatePlan } from "./starship.ts";
 import { renderBar } from "./statusline.ts";
+import type { Clock, Language, Prefs } from "./when.ts";
 
 export const VERSION = "0.1.0";
 const compiled = basename(Deno.execPath()).startsWith("starship-statusline");
@@ -53,6 +54,7 @@ export async function doInstall(
   update: boolean,
   log: (line: string) => void,
   components?: Components,
+  prefs?: Prefs,
 ): Promise<void> {
   const starship = await ensureStarship(update, log);
   const report = await install(presetId, {
@@ -60,12 +62,17 @@ export async function doInstall(
     bin: compiled ? paths.bin() : Deno.execPath(),
     copySelf: compiled,
     components,
+    prefs,
   });
   report.forEach(log);
 }
 
 /** The preset's status bar (from a sample session) and shell prompt, as ANSI text. */
-export function previewLines(preset: Preset, starship = readState()?.starship ?? "starship"): string[] {
+export function previewLines(
+  preset: Preset,
+  starship = readState()?.starship ?? "starship",
+  prefs?: { language: Language; clock: Clock },
+): string[] {
   const dir = Deno.makeTempDirSync({ prefix: "starship-statusline-preview-" });
   try {
     const bar = join(dir, "bar.toml"), shell = join(dir, "shell.toml");
@@ -79,6 +86,7 @@ export function previewLines(preset: Preset, starship = readState()?.starship ??
       starship,
       accountEmail: "you@example.com",
       usageFile: join(dir, "usage"),
+      prefs,
     });
     const prompt = new Deno.Command(starship, {
       args: ["prompt", "--cmd-duration", "1233000"],

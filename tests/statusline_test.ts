@@ -1,5 +1,6 @@
 import { assert, assertEquals, assertStringIncludes } from "@std/assert";
 import { join } from "node:path";
+import { formatWhen } from "../src/when.ts";
 import { bar, barWith, fixture, now, payload, plain, stripAnsi, tempDir } from "./helpers.ts";
 
 const CAP_START = "\ue0b6", ARROW = "\ue0b0", CAP_END = "\ue0b4";
@@ -43,18 +44,20 @@ Deno.test("model names lose the context suffix", () => {
   assert(!out.includes("context"));
 });
 
-Deno.test("resets within 24 h show the time, later ones the weekday", () => {
+Deno.test("reset times follow the chosen language and clock", () => {
   const soon = now() + 2 * 3600, later = now() + 3 * 86400;
-  const out = plain(payload({
+  const limits = payload({
     rate_limits: {
       five_hour: { used_percentage: 1, resets_at: soon },
       seven_day: { used_percentage: 23, resets_at: later },
     },
-  }));
-  const hhmm = (t: number) => new Date(t * 1000).toTimeString().slice(0, 5);
-  const day = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"][new Date(later * 1000).getDay()];
-  assertStringIncludes(out, `5h 1% · ${hhmm(soon)}`);
-  assertStringIncludes(out, `7d 23% · ${day} ${hhmm(later)}`);
+  });
+  for (const prefs of [{ language: "en", clock: "12h" }, { language: "fr-CA", clock: "24h" }] as const) {
+    const out = plain(limits, { prefs });
+    const when = (t: number) => formatWhen(new Date(t * 1000), new Date(), prefs);
+    assertStringIncludes(out, `5h 1% · ${when(soon)}`);
+    assertStringIncludes(out, `7d 23% · ${when(later)}`);
+  }
 });
 
 Deno.test("a spent 5-hour window reads Extra", () => {

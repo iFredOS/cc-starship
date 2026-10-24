@@ -5,6 +5,7 @@ import { mkdirSync, renameSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { home } from "./paths.ts";
 import type { Preset } from "./presets.ts";
+import { type Clock, DEFAULT_PREFS, formatWhen, type Language, resolvePrefs } from "./when.ts";
 
 // deno-lint-ignore no-explicit-any
 type Json = Record<string, any>;
@@ -16,6 +17,8 @@ export interface BarOptions {
   columns?: number;
   accountEmail?: string;
   usageFile?: string;
+  /** Language and clock for reset times; defaults to the system's. */
+  prefs?: { language: Language; clock: Clock };
 }
 
 const ESC = "\x1b";
@@ -70,8 +73,6 @@ const EFFORT: Record<string, { icon: string; label: string }> = {
   ultracode: { icon: "✦", label: "Ultracode" },
 };
 
-const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-
 function cleanModelName(displayName?: string, id?: string): string {
   if (displayName?.trim()) return displayName.replace(/\s*\([^)]*\)/g, "").replace(/^claude\s+/i, "").trim();
   if (!id) return "Claude";
@@ -99,14 +100,9 @@ function formatDuration(ms: number): string {
   return `${s}s`;
 }
 
-// Resets within 24 h show "HH:MM"; later ones get the weekday, "Tue HH:MM".
-function formatReset(epochSeconds?: number): string {
-  if (!epochSeconds) return "";
-  const d = new Date(epochSeconds * 1000);
-  const hh = String(d.getHours()).padStart(2, "0");
-  const mm = String(d.getMinutes()).padStart(2, "0");
-  const day = d.getTime() - Date.now() > 86400e3 ? `${WEEKDAYS[d.getDay()]} ` : "";
-  return ` · ${day}${hh}:${mm}`;
+// " · 18:00", " · tomorrow 6:00 PM", " · sam. 18 h": see formatWhen.
+function formatReset(epochSeconds: number | undefined, prefs: { language: Language; clock: Clock }): string {
+  return epochSeconds ? ` · ${formatWhen(new Date(epochSeconds * 1000), new Date(), prefs)}` : "";
 }
 
 // From 70% an amber chip, from 90% a red one with ▲: dark bold text on the warning
@@ -225,6 +221,7 @@ export function buildBar(j: Json, opts: BarOptions): { dir: string; vars: Record
   // Claude Code sets COLUMNS; keep a margin for the bar's own indent.
   const budget = (opts.columns ?? Infinity) - 2;
   if (opts.usageFile) saveUsage(opts.usageFile, fiveHour, sevenDay);
+  const prefs = opts.prefs ?? resolvePrefs(DEFAULT_PREFS);
 
   const accent = (s: string) => `${ACCENT}${s}${RESTORE}`;
   const diff = `${ICON.diff} +${cost.total_lines_added ?? 0}/−${cost.total_lines_removed ?? 0}`;
@@ -264,8 +261,8 @@ export function buildBar(j: Json, opts: BarOptions): { dir: string; vars: Record
       formatTokens(ctx.total_input_tokens ?? 0)
     } ($${(cost.total_cost_usd ?? 0).toFixed(2)})`,
     cache: cacheTimer(j.prompt_cache),
-    fiveHour: fiveHourUsage && fiveHourUsage + formatReset(fiveHour.resets_at),
-    sevenDay: sevenDayUsage && sevenDayUsage + formatReset(sevenDay.resets_at),
+    fiveHour: fiveHourUsage && fiveHourUsage + formatReset(fiveHour.resets_at, prefs),
+    sevenDay: sevenDayUsage && sevenDayUsage + formatReset(sevenDay.resets_at, prefs),
   }, [{ sevenDay: sevenDayUsage }, { fiveHour: fiveHourUsage }, { sevenDay: null }, { cache: null }, {
     fiveHour: null,
   }], budget);
