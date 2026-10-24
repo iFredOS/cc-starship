@@ -4,11 +4,14 @@
 import { createHash } from "node:crypto";
 import { basename, dirname, extname, join } from "node:path";
 import { installDir, isWindows, paths, readState, type State } from "./paths.ts";
+import { memoryBlock } from "./memory.ts";
 import { barConfig, findPreset, type Preset, shellConfig } from "./presets.ts";
 import { DEFAULT_PREFS, type Prefs } from "./when.ts";
 
 const MARK_START = "# >>> starship-statusline >>>";
 const MARK_END = "# <<< starship-statusline <<<";
+const MEMORY_START = "# >>> starship-statusline memory >>>";
+const MEMORY_END = "# <<< starship-statusline memory <<<";
 
 type Prior = { kind: "missing" } | { kind: "file"; backup: string } | { kind: "symlink"; target: string };
 
@@ -37,6 +40,8 @@ interface Manifest {
   starshipConfig?: FileEntry;
   settings?: SettingsEntry;
   profiles: ProfileEntry[];
+  /** Shell memory blocks, one per profile. */
+  memory?: ProfileEntry[];
 }
 
 export interface InstallOptions {
@@ -170,16 +175,33 @@ function initLine(profile: string, starship: string): string {
   return `eval "$(${exe} init ${shell})"`;
 }
 
-function hookProfile(profile: string, starship: string): ProfileEntry | null {
+/** Appends `lines` between markers, in the profile's own line endings. */
+function appendBlock(
+  profile: string,
+  lines: string[],
+  start: string,
+  end: string,
+  ours: boolean,
+): ProfileEntry {
   const exists = lstat(profile) !== null;
   const text = exists ? readText(profile) : "";
-  if (/starship(\.exe)?['"]?\s+init/.test(text)) return null; // already starts Starship
   const eol = text.includes("\r\n") ? "\r\n" : "\n";
   const lead = text && !text.endsWith("\n") ? eol : "";
-  const block = lead + [MARK_START, initLine(profile, starship), MARK_END].join(eol) + eol;
+  const block = lead + [start, ...lines, end].join(eol) + eol;
   writeText(profile, text + block);
-  return { path: profile, created: !exists, block };
+  // A profile the installer created is deleted again once all its blocks are gone.
+  return { path: profile, created: !exists || ours, block };
 }
+
+function hookProfile(profile: string, starship: string, ours: boolean): ProfileEntry | null {
+  const text = lstat(profile) ? readText(profile) : "";
+  if (/starship(\.exe)?['"]?\s+init/.test(text)) return null; // already starts Starship
+  return appendBlock(profile, [initLine(profile, starship)], MARK_START, MARK_END, ours);
+}
+
+/** Profiles the installer created, by any component. */
+const createdByUs = (m: Manifest, path: string) =>
+  [...m.profiles, ...(m.memory ?? [])].some((e) => e.path === path && e.created);
 
 function unhookProfile(entry: ProfileEntry): string {
   if (!lstat(entry.path)) return `${entry.path}: already gone`;
@@ -187,7 +209,7 @@ function unhookProfile(entry: ProfileEntry): string {
   const at = text.lastIndexOf(entry.block);
   if (at < 0) return `${entry.path}: the starship-statusline block was edited; remove it yourself`;
   const rest = text.slice(0, at) + text.slice(at + entry.block.length);
-  if (entry.created && rest.replace(/^\uFEFF/, "") === "") {
+  if (entry.created && rest.replace(/^\uFEFF/, "").trim() === "") {
     Deno.removeSync(entry.path);
     return `${entry.path}: removed (the installer created it)`;
   }
@@ -204,11 +226,13 @@ export interface Components {
   usage: boolean;
   /** Claude Code gets the bar's usage numbers with every prompt. */
   hook: boolean;
+  /** New tabs open in the last folder; history keeps one copy of each command. */
+  memory: boolean;
 }
 
-export const ALL_COMPONENTS: Components = { bar: true, shell: true, usage: true, hook: true };
+export const ALL_COMPONENTS: Components = { bar: true, shell: true, usage: true, hook: true, memory: true };
 /** Parts added after the first release start off for existing installs. */
-const NEW_COMPONENTS_OFF = { hook: false };
+const NEW_COMPONENTS_OFF = { hook: false, memory: false };
 
 export interface InstalledState extends State {
   bin: string;
@@ -248,7 +272,7 @@ function addShell(p: Preset, state: InstalledState, manifest: Manifest, report: 
   report.push(`${entry.path}: ${p.name} shell prompt`);
   for (const profile of shellProfiles()) {
     if (manifest.profiles.some((e) => e.path === profile)) continue;
-    const hooked = hookProfile(profile, state.starship);
+    const hooked = hookProfile(profile, state.starship, createdByUs(manifest, profile));
     if (hooked) {
       manifest.profiles.push(hooked);
       report.push(`${profile}: added Starship start-up`);
@@ -272,6 +296,33 @@ function removeShell(manifest: Manifest, report: string[]): void {
   }
   for (const profile of manifest.profiles) report.push(unhookProfile(profile));
   manifest.profiles = [];
+}
+
+function shellKind(profile: string): "zsh" | "powershell" | null {
+  if (extname(profile).toLowerCase() === ".ps1") return "powershell";
+  return basename(profile).includes("zsh") ? "zsh" : null;
+}
+
+function addMemory(manifest: Manifest, report: string[]): void {
+  manifest.memory ??= [];
+  for (const profile of shellProfiles()) {
+    if (manifest.memory.some((e) => e.path === profile)) continue;
+    const kind = shellKind(profile);
+    if (!kind) {
+      report.push(`${profile}: shell memory supports zsh and PowerShell only`);
+      continue;
+    }
+    const lines = memoryBlock(kind, paths.lastdir()).trimEnd().split("\n");
+    manifest.memory.push(
+      appendBlock(profile, lines, MEMORY_START, MEMORY_END, createdByUs(manifest, profile)),
+    );
+    report.push(`${profile}: new tabs open in your last folder; history without duplicates`);
+  }
+}
+
+function removeMemory(manifest: Manifest, report: string[]): void {
+  for (const entry of manifest.memory ?? []) report.push(unhookProfile(entry));
+  delete manifest.memory;
 }
 
 function hookCommand(bin: string): string {
@@ -353,6 +404,8 @@ function apply(state: InstalledState, manifest: Manifest, report: string[]): voi
   if (state.components.shell) addShell(p, state, manifest, report);
   else removeShell(manifest, report);
   syncSettings(state, manifest, report);
+  if (state.components.memory) addMemory(manifest, report);
+  else removeMemory(manifest, report);
   saveManifest(manifest);
 }
 
@@ -418,6 +471,7 @@ export async function uninstall(): Promise<string[]> {
   const manifest = readManifest();
   if (!manifest) throw new Error(`nothing to uninstall: no manifest in ${installDir()}`);
   const report: string[] = [];
+  removeMemory(manifest, report);
   removeShell(manifest, report);
   removeSettings(manifest, report, readInstalled()?.bin);
   removeInstallDir();

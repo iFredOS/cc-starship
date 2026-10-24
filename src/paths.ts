@@ -32,6 +32,8 @@ export const paths = {
   usage: () => join(installDir(), "usage"),
   /** Per-session snapshots of the bar, read by the usage hook. */
   sessions: () => join(installDir(), "sessions"),
+  /** The last folder a person cd'd into (shell memory). */
+  lastdir: () => join(installDir(), "lastdir"),
   /** Where Starship reads the shell prompt config. */
   starshipConfig: () => Deno.env.get("STARSHIP_CONFIG") || join(home(), ".config", "starship.toml"),
   claudeDir: () => Deno.env.get("CLAUDE_CONFIG_DIR") || join(home(), ".claude"),

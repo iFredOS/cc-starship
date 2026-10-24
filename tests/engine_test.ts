@@ -122,7 +122,7 @@ Deno.test("a profile that already starts Starship is left alone", async () => {
   try {
     Deno.writeTextFileSync(s.zshrc, 'eval "$(starship init zsh)"\n');
     const before = sha(s.zshrc);
-    await install("rainbow", opts(s));
+    await install("rainbow", { ...opts(s), components: { ...ALL_COMPONENTS, memory: false } });
     assertEquals(sha(s.zshrc), before);
     await uninstall();
     assertEquals(sha(s.zshrc), before);
@@ -211,17 +211,17 @@ Deno.test("components: bar only leaves the shell alone; toggling restores each p
 
     await install("rainbow", {
       ...opts(s),
-      components: { bar: true, shell: false, usage: false, hook: false },
+      components: { bar: true, shell: false, usage: false, hook: false, memory: false },
     });
     assertEquals(sha(s.starship), starship0, "shell prompt untouched");
     assertEquals(sha(s.zshrc), zshrc0, "profile untouched");
     assertStringIncludes(Deno.readTextFileSync(s.settings), "statusline");
 
-    await setComponents({ bar: true, shell: true, usage: true, hook: false });
+    await setComponents({ bar: true, shell: true, usage: true, hook: false, memory: false });
     assertStringIncludes(Deno.readTextFileSync(s.starship), "${custom.claude}");
     assertStringIncludes(Deno.readTextFileSync(s.zshrc), "init zsh");
 
-    await setComponents({ bar: false, shell: true, usage: false, hook: false });
+    await setComponents({ bar: false, shell: true, usage: false, hook: false, memory: false });
     assertEquals(sha(s.settings), settings0, "status bar off: settings.json back exactly");
     assert(!Deno.readTextFileSync(s.starship).includes("${custom.claude}"), "usage segment gone");
 
@@ -270,7 +270,7 @@ Deno.test("usage hook: added next to the user's own hooks, removed again exactly
     assert(commands.some((c: string) => c.endsWith(" hook")), JSON.stringify(commands));
     assertEquals(on.hooks.PreToolUse, mine.hooks.PreToolUse);
 
-    await setComponents({ ...ALL_COMPONENTS, hook: false });
+    await setComponents({ ...ALL_COMPONENTS, hook: false, memory: false });
     const off = JSON.parse(Deno.readTextFileSync(s.settings));
     assertEquals(off.hooks, mine.hooks, "only our hook removed");
     assertStringIncludes(off.statusLine.command, "statusline", "status bar still on");
@@ -294,7 +294,7 @@ Deno.test("usage hook without the status bar keeps the user's statusLine", async
     const data = JSON.parse(Deno.readTextFileSync(s.settings));
     assertEquals(data.statusLine, { type: "command", command: "node old.mjs" });
     assertEquals(data.hooks.UserPromptSubmit.length, 1);
-    await setComponents({ ...ALL_COMPONENTS, bar: false, hook: false });
+    await setComponents({ ...ALL_COMPONENTS, bar: false, hook: false, memory: false });
     assertEquals(JSON.parse(Deno.readTextFileSync(s.settings)), {
       statusLine: { type: "command", command: "node old.mjs" },
     });
@@ -308,9 +308,33 @@ Deno.test("an install from before the hook existed reads as hook off", async () 
   try {
     await install("rainbow", opts(s));
     const state = JSON.parse(Deno.readTextFileSync(join(s.installDir, "state.json")));
-    state.components = { bar: true, shell: true, usage: true, hook: false };
+    state.components = { bar: true, shell: true, usage: true, hook: false, memory: false };
     Deno.writeTextFileSync(join(s.installDir, "state.json"), JSON.stringify(state));
     assertEquals(readInstalled()?.components.hook, false);
+  } finally {
+    s.restore();
+  }
+});
+
+Deno.test("shell memory: its own block in each profile, removed exactly when switched off", async () => {
+  const s = sandbox();
+  try {
+    Deno.writeTextFileSync(s.zshrc, "export A=1\n");
+    const before = sha(s.zshrc);
+    await install("rainbow", { ...opts(s), components: { ...ALL_COMPONENTS, shell: false, memory: true } });
+    const text = Deno.readTextFileSync(s.zshrc);
+    assertStringIncludes(text, "# >>> starship-statusline memory >>>");
+    assertStringIncludes(text, join(s.installDir, "lastdir"));
+    assert(!text.includes("init zsh"), "the prompt part is separate");
+
+    await setComponents({ ...ALL_COMPONENTS, shell: true, memory: true });
+    await setComponents({ ...ALL_COMPONENTS, shell: true, memory: false });
+    assert(!Deno.readTextFileSync(s.zshrc).includes("memory >>>"));
+    assertStringIncludes(Deno.readTextFileSync(s.zshrc), "init zsh");
+
+    await setComponents({ ...ALL_COMPONENTS, memory: true });
+    await uninstall();
+    assertEquals(sha(s.zshrc), before);
   } finally {
     s.restore();
   }

@@ -30,7 +30,7 @@ Claude Code status bar and shell prompt, rendered by Starship.
   starship-statusline presets          list presets
   starship-statusline preview [NAME]   print a preset's status bar and shell prompt
   starship-statusline status           what is installed: parts, Starship, Nerd Fonts
-  starship-statusline components [bar|shell|usage|hook] [on|off]
+  starship-statusline components [bar|shell|usage|hook|memory] [on|off]
   starship-statusline font list | install ID | remove ID
   starship-statusline starship update | remove
   starship-statusline prefs [language auto|en|fr-CA] [clock auto|24h|12h]
@@ -53,7 +53,7 @@ async function status(): Promise<number> {
     const c = state.components;
     console.log(
       `parts:      status bar ${on(c.bar)}, shell prompt ${on(c.shell)}, usage ${on(c.usage)}, ` +
-        `usage for Claude ${on(c.hook)}`,
+        `usage for Claude ${on(c.hook)}, shell memory ${on(c.memory)}`,
     );
   }
   const update = info && latest && updatePlan(info, latest) ? ` (update to ${latest} available)` : "";
@@ -104,8 +104,8 @@ async function componentsCommand(args: string[]): Promise<number> {
     console.log(JSON.stringify(state.components));
     return 0;
   }
-  if (!["bar", "shell", "usage", "hook"].includes(name) || !["on", "off"].includes(value)) {
-    throw new Error("usage: components bar|shell|usage|hook on|off");
+  if (!["bar", "shell", "usage", "hook", "memory"].includes(name) || !["on", "off"].includes(value)) {
+    throw new Error("usage: components bar|shell|usage|hook|memory on|off");
   }
   const next: Components = { ...state.components, [name]: value === "on" };
   (await setComponents(next)).forEach((l) => console.log(`  ${l}`));

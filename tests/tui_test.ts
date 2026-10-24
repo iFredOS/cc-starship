@@ -42,7 +42,7 @@ Deno.test("with explanations, each line is followed by what its parts mean", () 
 
 const base = {
   installed: true,
-  components: { bar: true, shell: true, usage: true, hook: false },
+  components: { bar: true, shell: true, usage: true, hook: false, memory: false },
   starship: { path: "/opt/homebrew/bin/starship", version: "1.27.0", managedBy: "brew" as const },
   latest: "1.27.0" as string | null | undefined,
   fonts: ["JetBrainsMono Nerd Font"],
@@ -68,7 +68,7 @@ Deno.test("components panel: update available, missing Starship, usage needing t
   assert(missing.includes("not installed"), missing);
   const noShell = componentLines({
     ...base,
-    components: { bar: true, shell: false, usage: true, hook: false },
+    components: { bar: true, shell: false, usage: true, hook: false, memory: false },
   }, 0)
     .map(stripAnsi).join("\n");
   assert(noShell.includes("[ ] Shell prompt") && noShell.includes("needs the shell prompt"), noShell);

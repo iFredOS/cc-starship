@@ -1,0 +1,84 @@
+// Shell memory: new tabs open in the last folder a person cd'd into, and history
+// keeps one copy of each command (the newest). Shells run by agents (CLAUDECODE
+// set) neither move the remembered folder nor get moved by it.
+
+export type ShellKind = "zsh" | "powershell";
+
+const zshQuote = (s: string) => `'${s.replaceAll("'", "'\\''")}'`;
+const psQuote = (s: string) => `'${s.replaceAll("'", "''")}'`;
+
+function zsh(lastdir: string): string[] {
+  return [
+    "HISTFILE=${HISTFILE:-${ZDOTDIR:-$HOME}/.zsh_history}",
+    "HISTSIZE=100000",
+    "SAVEHIST=100000",
+    "setopt HIST_IGNORE_ALL_DUPS HIST_SAVE_NO_DUPS HIST_IGNORE_SPACE INC_APPEND_HISTORY",
+    `__ssl_lastdir=${zshQuote(lastdir)}`,
+    "__ssl_save_dir() {",
+    "  [[ -o interactive && -z $CLAUDECODE ]] || return 0",
+    '  mkdir -p -- "${__ssl_lastdir:h}" && print -r -- "$PWD" >| "$__ssl_lastdir"',
+    "} 2>/dev/null",
+    "autoload -Uz add-zsh-hook",
+    "add-zsh-hook chpwd __ssl_save_dir",
+    "if [[ $PWD == $HOME && -z $CLAUDECODE && -r $__ssl_lastdir ]]; then",
+    '  __ssl_dir=$(<"$__ssl_lastdir")',
+    '  [[ -n $__ssl_dir && -d $__ssl_dir ]] && cd -- "$__ssl_dir"',
+    "  unset __ssl_dir",
+    "fi",
+  ];
+}
+
+// PowerShell has no chpwd: the folder is saved from Starship's pre-command hook,
+// chained after any Invoke-Starship-PreCommand the profile already defines.
+function powershell(lastdir: string): string[] {
+  return [
+    `$global:__sslLastDir = ${psQuote(lastdir)}`,
+    "if (Get-Module PSReadLine) {",
+    "  Set-PSReadLineOption -HistoryNoDuplicates -MaximumHistoryCount 100000",
+    "  # Keep only the newest copy of each command in the history file.",
+    "  try {",
+    "    $h = (Get-PSReadLineOption).HistorySavePath",
+    "    if (Test-Path -LiteralPath $h) {",
+    "      $entries = [Collections.Generic.List[string]]::new(); $cur = $null",
+    "      foreach ($line in [IO.File]::ReadAllLines($h)) {",
+    '        $cur = if ($null -eq $cur) { $line } else { $cur + "`n" + $line }',
+    "        if (-not $line.EndsWith('`')) { $entries.Add($cur); $cur = $null }",
+    "      }",
+    "      if ($null -ne $cur) { $entries.Add($cur) }",
+    "      $seen = [Collections.Generic.HashSet[string]]::new()",
+    "      $keep = [Collections.Generic.List[string]]::new()",
+    "      for ($i = $entries.Count - 1; $i -ge 0; $i--) { if ($seen.Add($entries[$i])) { $keep.Add($entries[$i]) } }",
+    "      if ($keep.Count -lt $entries.Count) {",
+    "        $keep.Reverse()",
+    "        $nl = [Environment]::NewLine",
+    '        [IO.File]::WriteAllText("$h.ssl-tmp", (($keep -join "`n") -replace "`n", $nl) + $nl)',
+    '        Move-Item -LiteralPath "$h.ssl-tmp" -Destination $h -Force',
+    "      }",
+    "    }",
+    "  } catch {}",
+    "}",
+    "if (-not $env:CLAUDECODE) {",
+    "  $here = $executionContext.SessionState.Path.CurrentLocation",
+    "  if ($here.ProviderPath -eq $HOME -and (Test-Path -LiteralPath $global:__sslLastDir)) {",
+    "    $d = [IO.File]::ReadAllText($global:__sslLastDir).Trim()",
+    "    if ($d -and (Test-Path -LiteralPath $d -PathType Container)) { Set-Location -LiteralPath $d }",
+    "  }",
+    "  $global:__sslSaved = $executionContext.SessionState.Path.CurrentLocation.ProviderPath",
+    "  $outer = Get-Item Function:\\Invoke-Starship-PreCommand -ErrorAction Ignore",
+    "  if ($outer -and $outer.ScriptBlock.ToString() -notmatch '__sslLastDir') { $global:__sslOuterPreCommand = $outer.ScriptBlock }",
+    "  function global:Invoke-Starship-PreCommand {",
+    "    if ($global:__sslOuterPreCommand) { & $global:__sslOuterPreCommand }",
+    "    $loc = $executionContext.SessionState.Path.CurrentLocation",
+    "    if ($loc.Provider.Name -eq 'FileSystem' -and $loc.ProviderPath -ne $global:__sslSaved) {",
+    "      $global:__sslSaved = $loc.ProviderPath",
+    "      try { [IO.File]::WriteAllText($global:__sslLastDir, $loc.ProviderPath) } catch {}",
+    "    }",
+    "  }",
+    "}",
+  ];
+}
+
+/** The profile lines for `kind`, saving the folder to `lastdir`. */
+export function memoryBlock(kind: ShellKind, lastdir: string): string {
+  return (kind === "zsh" ? zsh(lastdir) : powershell(lastdir)).join("\n") + "\n";
+}
