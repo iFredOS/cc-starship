@@ -26,7 +26,7 @@ export function claudeStatusLine(): { command?: string } | undefined {
 export async function runUninstall(log: (line: string) => void): Promise<number> {
   (await uninstall()).forEach(log);
   if (isWindows && runningFromInstallDir()) {
-    log("the install folder is deleted as soon as this window closes");
+    log("the program itself is removed a moment after it exits");
   }
   return 0;
 }

@@ -164,18 +164,26 @@ export function uninstallFont(id: string): string[] {
   const records = installedByUs();
   const record = records.find((r) => r.id === id);
   if (!record) return [`${id}: not installed by this app, left alone`];
-  for (const file of record.files) {
+  const kept = record.files.filter((file) => {
     try {
       Deno.removeSync(file);
-    } catch {
-      // in use or already gone; Windows frees it after sign-out
+      return false;
+    } catch (e) {
+      return !(e instanceof Deno.errors.NotFound); // in use: a terminal still has it open
     }
-  }
+  });
   for (const value of record.registry) {
     new Deno.Command("reg", { args: ["delete", REGISTRY, "/v", value, "/f"] }).outputSync();
   }
   saveRecords(records.filter((r) => r.id !== id));
-  return [`${FONTS.find((f) => f.id === id)?.family ?? id}: removed`];
+  const family = FONTS.find((f) => f.id === id)?.family ?? id;
+  return kept.length
+    ? [
+      `${family}: removed, except ${kept.length} file(s) in use; delete them once your terminals are closed: ${
+        kept.join(", ")
+      }`,
+    ]
+    : [`${family}: removed`];
 }
 
 /** Windows Terminal's settings file, if installed. */

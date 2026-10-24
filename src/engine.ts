@@ -16,6 +16,7 @@ import {
 } from "./terminal.ts";
 import { barConfig, findPreset, type Preset, shellConfig } from "./presets.ts";
 import { DEFAULT_PREFS, type Prefs } from "./when.ts";
+import { installedByUs, uninstallFont } from "./fonts.ts";
 
 const MARK_START = "# >>> cc-starship >>>";
 const MARK_END = "# <<< cc-starship <<<";
@@ -481,8 +482,23 @@ function addMemory(state: InstalledState, manifest: Manifest, report: string[]):
 }
 
 function removeMemory(manifest: Manifest, report: string[]): void {
+  const powershell = (manifest.memory ?? []).some((e) => shellKind(e.path) === "powershell");
   for (const entry of manifest.memory ?? []) report.push(unhookProfile(entry, allBlocks(manifest)));
   delete manifest.memory;
+  // PowerShell's history was cleaned of duplicates; the copy from before stays yours.
+  const appData = Deno.env.get("APPDATA");
+  if (!powershell || !appData) return;
+  const kept = join(
+    appData,
+    "Microsoft",
+    "Windows",
+    "PowerShell",
+    "PSReadLine",
+    "ConsoleHost_history.txt.before-cc-starship",
+  );
+  if (lstat(kept)) {
+    report.push(`your PowerShell history from before is kept in ${kept}; delete it if you don't need it`);
+  }
 }
 
 function parseJson(path: string): Record<string, unknown> | null {
@@ -690,8 +706,14 @@ const isWindowsPowerShellProfile = (path: string) => /[\\/]WindowsPowerShell[\\/
 /** Runs `command` in Windows PowerShell; its output lines, or null when it can't run. */
 function windowsPowerShellLines(command: string): string[] | null {
   try {
+    // Without a policy this process was started with (powershell -ExecutionPolicy …): the
+    // answer must be what a new tab gets.
+    const env = Deno.env.toObject();
+    for (const k of Object.keys(env)) if (k.toLowerCase() === "psexecutionpolicypreference") delete env[k];
     const out = new Deno.Command(windowsPowerShell(), {
       args: ["-NoProfile", "-NonInteractive", "-Command", command],
+      clearEnv: true,
+      env,
       stdout: "piped",
       stderr: "null",
     }).outputSync();
@@ -848,6 +870,8 @@ export async function uninstall(): Promise<string[]> {
   removeShell(manifest, report);
   removeSettings(manifest, report, readInstalled()?.bin);
   restoreProfileScripts(manifest, report);
+  // Their record is in the install folder: after this, nothing could remove them any more.
+  for (const font of installedByUs()) report.push(...uninstallFont(font.id));
   removeInstallDir();
   report.push(`${installDir()}: removed`);
   return await Promise.resolve(report);
@@ -887,6 +911,7 @@ function afterExit(dir: string | null): void {
       stdin: "null",
       stdout: "null",
       stderr: "null",
+      detached: true, // or it ends when this program does
     }).spawn().unref();
     return;
   }
@@ -913,5 +938,6 @@ function afterExit(dir: string | null): void {
     stdin: "null",
     stdout: "null",
     stderr: "null",
+    detached: true, // or Windows ends it when this program exits
   }).spawn().unref();
 }

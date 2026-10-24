@@ -988,14 +988,63 @@ Deno.test("uninstall also removes the start-up caches our programs left in the t
   try {
     const ours = ["deno-compile-cc-starship.cache", "deno-compile-cc-starship-aarch64-apple-darwin.cache"];
     for (const f of [...ours, "deno-compile-other.cache"]) Deno.writeTextFileSync(join(tmp, f), "x");
-    await install("rainbow", opts(s));
-    await uninstall();
-    // Removed once this program has exited (it may still write its own cache then).
+    // In a process of its own: the removal happens after that process has exited.
+    const script = join(s.home, "run.ts");
+    const engine = new URL("../src/engine.ts", import.meta.url).href;
+    Deno.writeTextFileSync(
+      script,
+      `import { install, uninstall } from "${engine}";\n` +
+        `await install("rainbow", ${JSON.stringify(opts(s))});\nawait uninstall();\n`,
+    );
+    const run = await new Deno.Command(Deno.execPath(), { args: ["run", "-A", script] }).output();
+    assert(run.success, new TextDecoder().decode(run.stderr));
     for (let i = 0; i < 40 && ours.some((f) => sha(join(tmp, f)) !== "missing"); i++) {
       await new Promise((r) => setTimeout(r, 100));
     }
     assertEquals([...Deno.readDirSync(tmp)].map((e) => e.name), ["deno-compile-other.cache"]);
   } finally {
+    s.restore();
+  }
+});
+
+Deno.test("uninstall removes the fonts this app installed (its record goes with the install folder)", async () => {
+  const s = sandbox();
+  try {
+    await install("rainbow", opts(s));
+    const font = join(s.home, "JetBrainsMonoNerdFont-Regular.ttf");
+    const mine = join(s.home, "MyFont.ttf");
+    Deno.writeTextFileSync(font, "font");
+    Deno.writeTextFileSync(mine, "font");
+    Deno.writeTextFileSync(
+      join(s.installDir, "fonts.json"),
+      JSON.stringify([{ id: "jetbrains", files: [font], registry: [] }]),
+    );
+    const report = await uninstall();
+    assertEquals(sha(font), "missing");
+    assert(sha(mine) !== "missing", "other fonts stay");
+    assert(report.some((l) => l.includes("JetBrainsMono Nerd Font: removed")), report.join("\n"));
+  } finally {
+    s.restore();
+  }
+});
+
+Deno.test("switching memory off, or uninstalling, points to the PowerShell history kept from before", async () => {
+  const s = sandbox();
+  const appData = Deno.env.get("APPDATA");
+  try {
+    const ps1 = join(s.home, "Documents", "PowerShell", "Microsoft.PowerShell_profile.ps1");
+    Deno.env.set("CC_STARSHIP_PROFILES", ps1);
+    Deno.env.set("APPDATA", join(s.home, "AppData"));
+    const dir = join(s.home, "AppData", "Microsoft", "Windows", "PowerShell", "PSReadLine");
+    Deno.mkdirSync(dir, { recursive: true });
+    await install("rainbow", opts(s));
+    const kept = join(dir, "ConsoleHost_history.txt.before-cc-starship");
+    Deno.writeTextFileSync(kept, "ls\nls\n"); // what the profile saves before its first clean-up
+    const report = await uninstall();
+    assert(report.some((l) => l.includes(kept)), report.join("\n"));
+    assert(sha(kept) !== "missing", "your history stays");
+  } finally {
+    appData === undefined ? Deno.env.delete("APPDATA") : Deno.env.set("APPDATA", appData);
     s.restore();
   }
 });
