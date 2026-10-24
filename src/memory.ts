@@ -67,7 +67,9 @@ function powershell(lastdir: string): string[] {
     "}",
     "if (-not $global:__sslSkip) {",
     "  $here = $executionContext.SessionState.Path.CurrentLocation",
-    "  if ($here.ProviderPath -eq $HOME -and (Test-Path -LiteralPath $global:__sslLastDir)) {",
+    "  # Started in home or C:\\Windows (Run box, some launchers): no folder was chosen.",
+    '  $plain = $here.ProviderPath -eq $HOME -or ($env:WINDIR -and $here.ProviderPath -like "$env:WINDIR*")',
+    "  if ($plain -and (Test-Path -LiteralPath $global:__sslLastDir)) {",
     "    $d = [IO.File]::ReadAllText($global:__sslLastDir).Trim()",
     "    if ($d -and (Test-Path -LiteralPath $d -PathType Container)) { Set-Location -LiteralPath $d }",
     "  }",
@@ -88,5 +90,8 @@ function powershell(lastdir: string): string[] {
 
 /** The profile lines for `kind`, saving the folder to `lastdir`. */
 export function memoryBlock(kind: ShellKind, lastdir: string): string {
-  return (kind === "zsh" ? zsh(lastdir) : powershell(lastdir)).join("\n") + "\n";
+  if (kind === "zsh") return zsh(lastdir).join("\n") + "\n";
+  // A script block of its own, so its working variables stay out of the session.
+  const [first, ...rest] = powershell(lastdir);
+  return [first, "& {", ...rest.map((l) => `  ${l}`), "}"].join("\n") + "\n";
 }
