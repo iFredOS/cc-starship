@@ -42,7 +42,7 @@ Deno.test("with explanations, each line is followed by what its parts mean", () 
 
 const base = {
   installed: true,
-  components: { bar: true, shell: true, usage: true, hook: false, memory: false },
+  components: { bar: true, shell: true, usage: true, hook: false, memory: false, terminal: false },
   starship: { path: "/opt/homebrew/bin/starship", version: "1.27.0", managedBy: "brew" as const },
   latest: "1.27.0" as string | null | undefined,
   fonts: ["JetBrainsMono Nerd Font"],
@@ -61,28 +61,47 @@ Deno.test("components panel: switches, Starship version and font", () => {
 });
 
 Deno.test("components panel: update available, missing Starship, usage needing the prompt", () => {
-  const outdated = componentLines({ ...base, starship: { ...base.starship, version: "1.26.0" } }, 3)
+  const outdated = componentLines({ ...base, starship: { ...base.starship, version: "1.26.0" } }, 7)
     .map(stripAnsi).join("\n");
   assert(outdated.includes("1.26.0 → 1.27.0"), outdated);
-  const missing = componentLines({ ...base, starship: null }, 3).map(stripAnsi).join("\n");
+  const missing = componentLines({ ...base, starship: null }, 7).map(stripAnsi).join("\n");
   assert(missing.includes("not installed"), missing);
   const noShell = componentLines({
     ...base,
-    components: { bar: true, shell: false, usage: true, hook: false, memory: false },
+    components: { bar: true, shell: false, usage: true, hook: false, memory: false, terminal: false },
   }, 0)
     .map(stripAnsi).join("\n");
   assert(noShell.includes("[ ] Shell prompt") && noShell.includes("needs the shell prompt"), noShell);
-  const noFont = componentLines({ ...base, fonts: [] }, 4).map(stripAnsi).join("\n");
+  const noFont = componentLines({ ...base, fonts: [] }, 8).map(stripAnsi).join("\n");
   assert(noFont.includes("none found"), noFont);
 });
 
 Deno.test("components panel: language and clock rows show the choice and a sample", () => {
-  const auto = componentLines(base, 5).map(stripAnsi).join("\n");
+  const auto = componentLines(base, 9).map(stripAnsi).join("\n");
   assert(auto.includes("Language") && auto.includes("Auto (English)"), auto);
   assert(auto.includes("Clock") && auto.includes("Auto (12 h)"), auto);
-  const fr = componentLines({ ...base, prefs: { language: "fr-CA", clock: "24h" } }, 5).map(stripAnsi).join(
+  const fr = componentLines({ ...base, prefs: { language: "fr-CA", clock: "24h" } }, 9).map(stripAnsi).join(
     "\n",
   );
   assert(fr.includes("Français (Québec)") && fr.includes("24 h"), fr);
   assert(/(dim|lun|mar|mer|jeu|ven|sam)\. 18 h/.test(fr), "sample reset in the chosen format: " + fr);
+});
+
+Deno.test("components panel: the add-ons, and what the usage hook costs in tokens", () => {
+  const all = { bar: true, shell: true, usage: true, hook: true, memory: true, terminal: true };
+  const text = componentLines({ ...base, components: all }, 0).map(stripAnsi).join("\n");
+  assert(text.includes("[x] Usage for Claude"), text);
+  assert(/tokens per prompt/.test(text), "the token cost is shown up front: " + text);
+  assert(text.includes("[x] Shell memory"), text);
+  assert(text.includes("[x] Terminal settings") && text.includes("JetBrainsMono"), text);
+  const noBar = componentLines({ ...base, components: { ...all, bar: false } }, 0).map(stripAnsi).join("\n");
+  assert(noBar.includes("needs the status bar"), noBar);
+});
+
+Deno.test("components panel: when Claude starts getting usage", () => {
+  const lines = (hookFrom?: number) =>
+    componentLines({ ...base, prefs: { ...base.prefs, hookFrom } }, 0).map(stripAnsi).join("\n");
+  assert(lines(undefined).includes("Send usage to Claude") && lines(undefined).includes("from 50%"), lines());
+  assert(lines(0).includes("every prompt"), lines(0));
+  assert(lines(90).includes("from 90%"), lines(90));
 });

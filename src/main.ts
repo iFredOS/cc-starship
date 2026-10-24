@@ -1,7 +1,14 @@
 // starship-statusline: installer, uninstaller and runtime for a Starship-rendered
 // Claude Code status bar and matching shell prompt.
 import { doInstall, ensureStarship, previewLines, runUninstall, VERSION } from "./app.ts";
-import { type Components, readInstalled, setComponents, setPrefs, setTheme } from "./engine.ts";
+import {
+  ALL_COMPONENTS,
+  type Components,
+  readInstalled,
+  setComponents,
+  setPrefs,
+  setTheme,
+} from "./engine.ts";
 import {
   detectNerdFonts,
   fontFamilies,
@@ -11,29 +18,29 @@ import {
   uninstallFont,
   windowsTerminalSettings,
 } from "./fonts.ts";
-import { hookOutput, pruneSnapshots, snapshotFile } from "./hook.ts";
+import { HOOK_COST, hookOutput, pruneSnapshots, snapshotFile } from "./hook.ts";
 import { paths, readState } from "./paths.ts";
 import { allPresets, DEFAULT_PRESET, findPreset } from "./presets.ts";
 import { findStarship, latestVersion, runUpdate, uninstallPlan, updatePlan } from "./starship.ts";
 import { readAccountEmail, renderBar } from "./statusline.ts";
 import { runUi } from "./tui.ts";
 import { usageText } from "./usage.ts";
-import { DEFAULT_PREFS, type Prefs, resolvePrefs } from "./when.ts";
+import { DEFAULT_HOOK_FROM, DEFAULT_PREFS, HOOK_FROM_CHOICES, type Prefs, resolvePrefs } from "./when.ts";
 
 const HELP = `starship-statusline ${VERSION}
 Claude Code status bar and shell prompt, rendered by Starship.
 
   starship-statusline                  pick a preset with the keyboard and install it
-  starship-statusline install [--preset NAME] [--no-starship-update]
+  starship-statusline install [--preset NAME] [--no-starship-update] [--no-hook]
   starship-statusline uninstall        put back everything the installer changed
   starship-statusline theme [NAME]     switch preset (prompt and status bar), or show the current one
   starship-statusline presets          list presets
   starship-statusline preview [NAME]   print a preset's status bar and shell prompt
   starship-statusline status           what is installed: parts, Starship, Nerd Fonts
-  starship-statusline components [bar|shell|usage|hook|memory] [on|off]
+  starship-statusline components [bar|shell|usage|hook|memory|terminal] [on|off]
   starship-statusline font list | install ID | remove ID
   starship-statusline starship update | remove
-  starship-statusline prefs [language auto|en|fr-CA] [clock auto|24h|12h]
+  starship-statusline prefs [language auto|en|fr-CA] [clock auto|24h|12h] [hook-from 0|50|70|90]
   starship-statusline statusline       (run by Claude Code) render the status bar from stdin
   starship-statusline usage            (run by the shell prompt) print Claude usage
   starship-statusline hook             (run by Claude Code) tell Claude its usage with each prompt`;
@@ -53,7 +60,7 @@ async function status(): Promise<number> {
     const c = state.components;
     console.log(
       `parts:      status bar ${on(c.bar)}, shell prompt ${on(c.shell)}, usage ${on(c.usage)}, ` +
-        `usage for Claude ${on(c.hook)}, shell memory ${on(c.memory)}`,
+        `usage for Claude ${on(c.hook)}, shell memory ${on(c.memory)}, terminal settings ${on(c.terminal)}`,
     );
   }
   const update = info && latest && updatePlan(info, latest) ? ` (update to ${latest} available)` : "";
@@ -88,11 +95,19 @@ async function prefsCommand(args: string[]): Promise<number> {
       prefs.language = value as Prefs["language"];
     } else if (key === "clock" && ["auto", "24h", "12h"].includes(value)) {
       prefs.clock = value as Prefs["clock"];
-    } else throw new Error("usage: prefs [language auto|en|fr-CA] [clock auto|24h|12h]");
+    } else if (key === "hook-from" && HOOK_FROM_CHOICES.includes(Number(value) as 0)) {
+      prefs.hookFrom = Number(value);
+    } else {throw new Error(
+        "usage: prefs [language auto|en|fr-CA] [clock auto|24h|12h] [hook-from 0|50|70|90]",
+      );}
   }
   if (args.length) await setPrefs(prefs);
   const r = resolvePrefs(prefs);
-  console.log(`language ${prefs.language} (${r.language}), clock ${prefs.clock} (${r.clock})`);
+  const from = prefs.hookFrom ?? DEFAULT_HOOK_FROM;
+  console.log(
+    `language ${prefs.language} (${r.language}), clock ${prefs.clock} (${r.clock}), ` +
+      `usage to Claude ${from ? `from ${from}%` : "every prompt"}`,
+  );
   return 0;
 }
 
@@ -104,10 +119,13 @@ async function componentsCommand(args: string[]): Promise<number> {
     console.log(JSON.stringify(state.components));
     return 0;
   }
-  if (!["bar", "shell", "usage", "hook", "memory"].includes(name) || !["on", "off"].includes(value)) {
-    throw new Error("usage: components bar|shell|usage|hook|memory on|off");
+  if (
+    !["bar", "shell", "usage", "hook", "memory", "terminal"].includes(name) || !["on", "off"].includes(value)
+  ) {
+    throw new Error("usage: components bar|shell|usage|hook|memory|terminal on|off");
   }
   const next: Components = { ...state.components, [name]: value === "on" };
+  if (name === "hook" && value === "on") console.log(`Usage for Claude: ${HOOK_COST}.`);
   (await setComponents(next)).forEach((l) => console.log(`  ${l}`));
   return 0;
 }
@@ -198,10 +216,12 @@ export async function main(args: string[]): Promise<number> {
       return 0;
     case "hook": {
       const input = await new Response(Deno.stdin.readable).text();
+      const prefs = readInstalled()?.prefs ?? DEFAULT_PREFS;
       const out = hookOutput(input, {
         sessions: paths.sessions(),
         usageFile: paths.usage(),
-        prefs: resolvePrefs(readInstalled()?.prefs ?? DEFAULT_PREFS),
+        prefs: resolvePrefs(prefs),
+        from: prefs.hookFrom ?? DEFAULT_HOOK_FROM,
       });
       if (out) await Deno.stdout.write(new TextEncoder().encode(out + "\n"));
       pruneSnapshots(paths.sessions());
@@ -212,7 +232,12 @@ export async function main(args: string[]): Promise<number> {
       return 0;
     case "install": {
       const preset = flag(args, "--preset") ?? readState()?.theme ?? DEFAULT_PRESET;
-      await doInstall(preset, !args.includes("--no-starship-update"), log);
+      const components = { ...(readInstalled()?.components ?? ALL_COMPONENTS) };
+      if (args.includes("--no-hook")) components.hook = false;
+      if (components.hook) {
+        console.log(`Usage for Claude is on: ${HOOK_COST}. Install with --no-hook to leave it off.`);
+      }
+      await doInstall(preset, !args.includes("--no-starship-update"), log, components);
       console.log(
         `Installed with the ${findPreset(preset)?.name} preset. Open a new terminal tab to see it.`,
       );

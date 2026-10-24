@@ -23,9 +23,18 @@ import {
   uninstallFont,
   windowsTerminalSettings,
 } from "./fonts.ts";
+import { HOOK_COST } from "./hook.ts";
 import { isWindows, paths } from "./paths.ts";
+import { TERMINAL_FONT, TERMINAL_SIZE } from "./terminal.ts";
 import { allPresets, DEFAULT_PRESET, type Preset } from "./presets.ts";
-import { DEFAULT_PREFS, formatWhen, type Prefs, resolvePrefs } from "./when.ts";
+import {
+  DEFAULT_HOOK_FROM,
+  DEFAULT_PREFS,
+  formatWhen,
+  HOOK_FROM_CHOICES,
+  type Prefs,
+  resolvePrefs,
+} from "./when.ts";
 import {
   findStarship,
   latestVersion,
@@ -88,7 +97,21 @@ export interface PanelInfo {
   locale?: string;
 }
 
-const ROWS = ["bar", "shell", "usage", "starship", "font", "language", "clock"] as const;
+const ROWS = [
+  "bar",
+  "shell",
+  "usage",
+  "hook",
+  "hookFrom",
+  "memory",
+  "terminal",
+  "starship",
+  "font",
+  "language",
+  "clock",
+] as const;
+type Toggle = "bar" | "shell" | "usage" | "hook" | "memory" | "terminal";
+const TOGGLES: readonly string[] = ["bar", "shell", "usage", "hook", "memory", "terminal"];
 
 const LANGUAGES = ["auto", "en", "fr-CA"] as const;
 const CLOCKS = ["auto", "24h", "12h"] as const;
@@ -119,6 +142,26 @@ export function componentLines(info: PanelInfo, selected: number): string[] {
     `${box(c.shell)} Shell prompt                ${dim("Starship prompt in new terminal tabs")}`,
     `${box(c.usage)} Claude usage in the prompt  ${
       dim(c.shell ? "5h · 7d usage, saved by the status bar" : "needs the shell prompt")
+    }`,
+    `${box(c.hook)} Usage for Claude            ${
+      c.bar
+        ? dim("Claude sees context · 5h · 7d; ") + yellow(`costs ${HOOK_COST}`)
+        : dim("needs the status bar")
+    }`,
+    `    Send usage to Claude        ${
+      (info.prefs.hookFrom ?? DEFAULT_HOOK_FROM) === 0
+        ? "every prompt"
+        : `from ${info.prefs.hookFrom ?? DEFAULT_HOOK_FROM}%`
+    }   ${dim("silent (0 tokens) until context, 5h or 7d gets there")}`,
+    `${box(c.memory)} Shell memory                ${
+      dim("new tabs open in your last folder; no duplicate history")
+    }`,
+    `${box(c.terminal)} Terminal settings           ${
+      dim(
+        `${TERMINAL_FONT} ${TERMINAL_SIZE}, ${
+          isWindows ? "in Windows Terminal" : "Option as Alt, in cmux and Ghostty"
+        }`,
+      )
     }`,
     `    Starship                    ${starshipStatus}`,
     `    Nerd Font                   ${
@@ -152,6 +195,7 @@ type Key =
   | "remove"
   | "uninstall"
   | "yes"
+  | "no"
   | "explain"
   | "other";
 
@@ -167,6 +211,7 @@ function parseKey(bytes: Uint8Array): Key {
   if (s === "x" || s === "X") return "remove";
   if (s === "u" || s === "U") return "uninstall";
   if (s === "y" || s === "Y") return "yes";
+  if (s === "n" || s === "N") return "no";
   if (s === "e" || s === "E" || s === "?") return "explain";
   return "other";
 }
@@ -316,9 +361,15 @@ export async function runUi(): Promise<number> {
     state = readInstalled();
   };
 
-  const toggle = async (key: "bar" | "shell" | "usage") => {
+  const toggle = async (key: Toggle) => {
     const next = { ...components, [key]: !components[key] };
     if (key === "usage" && next.usage) next.shell = true;
+    if (key === "hook" && next.hook) {
+      const ok = await prompt(
+        yellow(`Usage for Claude ${HOOK_COST}, sent with each message. Switch it on? (y/N) `),
+      );
+      if (ok !== "yes") return;
+    }
     if (!state) {
       components = next;
       return;
@@ -336,7 +387,13 @@ export async function runUi(): Promise<number> {
     if (key === "up") row = (row - 1 + ROWS.length) % ROWS.length;
     if (key === "down") row = (row + 1) % ROWS.length;
     const name = ROWS[row];
-    if (key === "space" && (name === "bar" || name === "shell" || name === "usage")) await toggle(name);
+    if (key === "space" && TOGGLES.includes(name)) await toggle(name as Toggle);
+    if (key === "space" && name === "hookFrom") {
+      const i = HOOK_FROM_CHOICES.indexOf((prefs.hookFrom ?? DEFAULT_HOOK_FROM) as 0);
+      const next = { ...prefs, hookFrom: HOOK_FROM_CHOICES[(i + 1) % HOOK_FROM_CHOICES.length] };
+      if (state) await setPrefs(next);
+      prefs = next;
+    }
     if (key === "space" && (name === "language" || name === "clock")) {
       const next = name === "language"
         ? { ...prefs, language: LANGUAGES[(LANGUAGES.indexOf(prefs.language) + 1) % LANGUAGES.length] }
@@ -417,6 +474,12 @@ export async function runUi(): Promise<number> {
         state = readInstalled();
         message = green(`✓ ${p.name} is on: open a new terminal tab; Claude Code updates within a minute.`);
       } else {
+        if (components.hook) {
+          const keep = await prompt(
+            yellow(`Usage for Claude ${HOOK_COST}, so Claude knows your limits. Keep it on? (Y/n) `),
+          );
+          components = { ...components, hook: keep !== "no" };
+        }
         await run("Installing…", async (log) => {
           await doInstall(p.id, true, log, components, prefs);
           log(green(`Installed with ${p.name}. Open a new terminal tab, and restart Claude Code.`));

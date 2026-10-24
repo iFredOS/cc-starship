@@ -1,7 +1,9 @@
 // Steps shared by the command line and the keyboard picker.
 import { basename, join } from "node:path";
 import { type Components, install, runningFromInstallDir, uninstall } from "./engine.ts";
+import { detectNerdFonts, FONTS, installFont } from "./fonts.ts";
 import { isWindows, paths, readState } from "./paths.ts";
+import { TERMINAL_FONT } from "./terminal.ts";
 import { barConfig, type Preset, shellConfig } from "./presets.ts";
 import { downloadStarship, findStarship, latestVersion, runUpdate, updatePlan } from "./starship.ts";
 import { renderBar } from "./statusline.ts";
@@ -57,6 +59,10 @@ export async function doInstall(
   prefs?: Prefs,
 ): Promise<void> {
   const starship = await ensureStarship(update, log);
+  if (components?.terminal && !detectNerdFonts().includes(TERMINAL_FONT)) {
+    log(`installing ${TERMINAL_FONT} for the terminal settings`);
+    (await installFont(FONTS.find((f) => f.family === TERMINAL_FONT)!)).forEach(log);
+  }
   const report = await install(presetId, {
     starship,
     bin: compiled ? paths.bin() : Deno.execPath(),

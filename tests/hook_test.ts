@@ -87,3 +87,29 @@ Deno.test("hook: a session id can't point outside the sessions folder", () => {
   assert(file.startsWith(o.sessions + "/") || file.startsWith(o.sessions + "\\"), file);
   assert(!file.slice(o.sessions.length + 1).includes(".."), file);
 });
+
+Deno.test("hook threshold: silent (0 tokens) until context, 5h or 7d reaches it", () => {
+  const o = setup();
+  saveSnapshot(snapshotFile(o.sessions, payload.session_id), payload, now); // 65 / 21 / 25
+  const run = (from: number) =>
+    hookOutput(JSON.stringify({ session_id: "abc-123" }), { ...o, prefs: en12, now, from });
+  assertEquals(run(70), "", "everything below 70%");
+  assertStringIncludes(context(run(50)), "context 65%", "context crossed 50%: the whole line");
+  assertStringIncludes(context(run(50)), "7d 25%");
+  assertStringIncludes(context(run(0)), "5h 21%", "0 means every prompt");
+});
+
+Deno.test("hook: time left until each reset", () => {
+  const o = setup();
+  const p = {
+    ...payload,
+    rate_limits: {
+      five_hour: { used_percentage: 21, resets_at: at(1, 2) - 50 * 60 },
+      seven_day: { used_percentage: 25, resets_at: at(3, 5) },
+    },
+  };
+  saveSnapshot(snapshotFile(o.sessions, payload.session_id), p, now);
+  const text = context(hookOutput(JSON.stringify({ session_id: "abc-123" }), { ...o, prefs: en12, now }));
+  assertStringIncludes(text, "(in 2h 10m)"); // 23:00 → 01:10
+  assertStringIncludes(text, "(in 2d 6h)"); // 23:00 → Mon 05:00
+});

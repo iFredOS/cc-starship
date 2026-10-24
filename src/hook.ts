@@ -20,6 +20,12 @@ interface Snapshot {
   sevenDay?: Window;
 }
 
+/**
+ * What the hook costs: its line (~40 tokens) plus Claude Code's wrapper, added to
+ * the context of every prompt. Shown before the hook is switched on.
+ */
+export const HOOK_COST = "about 60 tokens per prompt";
+
 /** The snapshot file for a session; anything but letters, digits, `-` and `_` is dropped. */
 export function snapshotFile(dir: string, sessionId: string): string {
   return join(dir, `${String(sessionId).replace(/[^\w-]/g, "") || "unknown"}.json`);
@@ -74,6 +80,23 @@ export interface HookOptions {
   usageFile: string;
   prefs: { language: Language; clock: Clock };
   now?: Date;
+  /** Send nothing until context, 5h or 7d reaches this percentage; 0 = every prompt. */
+  from?: number;
+}
+
+/** "45m", "2h 10m", "2d 6h". */
+function timeLeft(seconds: number): string {
+  const m = Math.max(1, Math.round(seconds / 60));
+  if (m < 60) return `${m}m`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return m % 60 ? `${h}h ${m % 60}m` : `${h}h`;
+  return h % 24 ? `${Math.floor(h / 24)}d ${h % 24}h` : `${Math.floor(h / 24)}d`;
+}
+
+/** The highest of context, 5h and 7d now (a window past its reset counts as 0). */
+function highest(s: Snapshot, now: Date): number {
+  const current = (w?: Window) => (!w ? 0 : w.resetsAt > 0 && now.getTime() / 1000 >= w.resetsAt ? 0 : w.pct);
+  return Math.max(s.context?.pct ?? 0, current(s.fiveHour), current(s.sevenDay));
 }
 
 /** One line for Claude: "context 65% (130k tokens) · 5h 21%, resets Sat 2 AM · 7d 25%, …". */
@@ -84,7 +107,9 @@ function describe(s: Snapshot, o: HookOptions): string {
     const passed = w.resetsAt > 0 && now.getTime() / 1000 >= w.resetsAt;
     const pct = passed ? 0 : Math.round(w.pct);
     const reset = w.resetsAt > 0 && !passed
-      ? `, resets ${formatWhen(new Date(w.resetsAt * 1000), now, o.prefs)}`
+      ? `, resets ${formatWhen(new Date(w.resetsAt * 1000), now, o.prefs)} (in ${
+        timeLeft(w.resetsAt - now.getTime() / 1000)
+      })`
       : "";
     return `${label} ${pct}%${reset}`;
   };
@@ -108,6 +133,7 @@ export function hookOutput(stdin: string, o: HookOptions): string {
   const shared = readUsage(o.usageFile);
   const snapshot = session ?? shared;
   if (!snapshot) return "";
+  if (highest(snapshot, o.now ?? new Date()) < (o.from ?? 0)) return "";
   const text = describe(snapshot, o);
   if (!text) return "";
   return JSON.stringify({

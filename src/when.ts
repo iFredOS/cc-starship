@@ -7,7 +7,12 @@ export type Clock = "24h" | "12h";
 export interface Prefs {
   language: Language | "auto";
   clock: Clock | "auto";
+  /** The usage hook stays silent until context, 5h or 7d reaches this %; 0 = every prompt. */
+  hookFrom?: number;
 }
+
+export const HOOK_FROM_CHOICES = [0, 50, 70, 90] as const;
+export const DEFAULT_HOOK_FROM = 50;
 
 export const DEFAULT_PREFS: Prefs = { language: "auto", clock: "auto" };
 

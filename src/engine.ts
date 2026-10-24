@@ -5,6 +5,15 @@ import { createHash } from "node:crypto";
 import { basename, dirname, extname, join } from "node:path";
 import { installDir, isWindows, paths, readState, type State } from "./paths.ts";
 import { memoryBlock } from "./memory.ts";
+import {
+  applyWindowsTerminal,
+  GHOSTTY_LINES,
+  restoreWindowsTerminal,
+  TERMINAL_FONT,
+  TERMINAL_SIZE,
+  terminalFiles,
+  type WindowsTerminalPrior,
+} from "./terminal.ts";
 import { barConfig, findPreset, type Preset, shellConfig } from "./presets.ts";
 import { DEFAULT_PREFS, type Prefs } from "./when.ts";
 
@@ -12,6 +21,8 @@ const MARK_START = "# >>> starship-statusline >>>";
 const MARK_END = "# <<< starship-statusline <<<";
 const MEMORY_START = "# >>> starship-statusline memory >>>";
 const MEMORY_END = "# <<< starship-statusline memory <<<";
+const TERMINAL_START = "# >>> starship-statusline terminal >>>";
+const TERMINAL_END = "# <<< starship-statusline terminal <<<";
 
 type Prior = { kind: "missing" } | { kind: "file"; backup: string } | { kind: "symlink"; target: string };
 
@@ -42,6 +53,9 @@ interface Manifest {
   profiles: ProfileEntry[];
   /** Shell memory blocks, one per profile. */
   memory?: ProfileEntry[];
+  /** cmux/Ghostty config blocks. */
+  terminal?: ProfileEntry[];
+  windowsTerminal?: FileEntry & { fonts: WindowsTerminalPrior };
 }
 
 export interface InstallOptions {
@@ -228,11 +242,20 @@ export interface Components {
   hook: boolean;
   /** New tabs open in the last folder; history keeps one copy of each command. */
   memory: boolean;
+  /** cmux, Ghostty and Windows Terminal use the same font, size and keys. */
+  terminal: boolean;
 }
 
-export const ALL_COMPONENTS: Components = { bar: true, shell: true, usage: true, hook: true, memory: true };
+export const ALL_COMPONENTS: Components = {
+  bar: true,
+  shell: true,
+  usage: true,
+  hook: true,
+  memory: true,
+  terminal: true,
+};
 /** Parts added after the first release start off for existing installs. */
-const NEW_COMPONENTS_OFF = { hook: false, memory: false };
+const NEW_COMPONENTS_OFF = { hook: false, memory: false, terminal: false };
 
 export interface InstalledState extends State {
   bin: string;
@@ -325,6 +348,55 @@ function removeMemory(manifest: Manifest, report: string[]): void {
   delete manifest.memory;
 }
 
+function parseJson(path: string): Record<string, unknown> | null {
+  try {
+    return JSON.parse(readText(path).replace(/^\uFEFF/, ""));
+  } catch {
+    return null;
+  }
+}
+
+function addTerminal(manifest: Manifest, report: string[]): void {
+  manifest.terminal ??= [];
+  for (const file of terminalFiles()) {
+    if (file.endsWith(".json")) {
+      if (manifest.windowsTerminal) continue;
+      const data = parseJson(file);
+      if (!data) {
+        report.push(`${file}: has comments, so set the font by hand (${TERMINAL_FONT} ${TERMINAL_SIZE})`);
+        continue;
+      }
+      const prior = recordPrior(file, "windows-terminal-settings.json");
+      const fonts = applyWindowsTerminal(data);
+      const written = writeOwned(file, JSON.stringify(data, null, 4) + "\n");
+      manifest.windowsTerminal = { path: file, prior, written, fonts };
+      report.push(`${file}: ${TERMINAL_FONT} ${TERMINAL_SIZE} for every profile`);
+    } else if (!manifest.terminal.some((e) => e.path === file)) {
+      manifest.terminal.push(appendBlock(file, GHOSTTY_LINES, TERMINAL_START, TERMINAL_END, false));
+      report.push(`${file}: ${TERMINAL_FONT} ${TERMINAL_SIZE}, Option key as Alt`);
+    }
+  }
+}
+
+function removeTerminal(manifest: Manifest, report: string[]): void {
+  for (const entry of manifest.terminal ?? []) report.push(unhookProfile(entry));
+  delete manifest.terminal;
+  const wt = manifest.windowsTerminal;
+  if (wt) {
+    const data = parseJson(wt.path);
+    if (currentSha(wt.path) === wt.written || !data) {
+      restorePrior(wt.path, wt.prior);
+      report.push(`${wt.path}: restored`);
+    } else {
+      // Windows Terminal rewrote it since: put back only the fonts.
+      restoreWindowsTerminal(data, wt.fonts);
+      writeText(wt.path, JSON.stringify(data, null, 4) + "\n");
+      report.push(`${wt.path}: fonts restored, your other changes kept`);
+    }
+    delete manifest.windowsTerminal;
+  }
+}
+
 function hookCommand(bin: string): string {
   return `${JSON.stringify(bin.replaceAll("\\", "/"))} hook`;
 }
@@ -406,6 +478,8 @@ function apply(state: InstalledState, manifest: Manifest, report: string[]): voi
   syncSettings(state, manifest, report);
   if (state.components.memory) addMemory(manifest, report);
   else removeMemory(manifest, report);
+  if (state.components.terminal) addTerminal(manifest, report);
+  else removeTerminal(manifest, report);
   saveManifest(manifest);
 }
 
@@ -471,6 +545,7 @@ export async function uninstall(): Promise<string[]> {
   const manifest = readManifest();
   if (!manifest) throw new Error(`nothing to uninstall: no manifest in ${installDir()}`);
   const report: string[] = [];
+  removeTerminal(manifest, report);
   removeMemory(manifest, report);
   removeShell(manifest, report);
   removeSettings(manifest, report, readInstalled()?.bin);

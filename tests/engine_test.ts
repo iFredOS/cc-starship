@@ -28,6 +28,8 @@ function sandbox() {
     USERPROFILE: home,
     STARSHIP_STATUSLINE_HOME: join(home, "install"),
     STARSHIP_STATUSLINE_PROFILES: join(home, ".zshrc"),
+    // Never the real terminal settings; tests that want some list them.
+    STARSHIP_STATUSLINE_TERMINALS: "",
   };
   const saved: Record<string, string | undefined> = {};
   for (const [k, v] of Object.entries(env)) {
@@ -122,7 +124,10 @@ Deno.test("a profile that already starts Starship is left alone", async () => {
   try {
     Deno.writeTextFileSync(s.zshrc, 'eval "$(starship init zsh)"\n');
     const before = sha(s.zshrc);
-    await install("rainbow", { ...opts(s), components: { ...ALL_COMPONENTS, memory: false } });
+    await install("rainbow", {
+      ...opts(s),
+      components: { ...ALL_COMPONENTS, memory: false, terminal: false },
+    });
     assertEquals(sha(s.zshrc), before);
     await uninstall();
     assertEquals(sha(s.zshrc), before);
@@ -211,17 +216,24 @@ Deno.test("components: bar only leaves the shell alone; toggling restores each p
 
     await install("rainbow", {
       ...opts(s),
-      components: { bar: true, shell: false, usage: false, hook: false, memory: false },
+      components: { bar: true, shell: false, usage: false, hook: false, memory: false, terminal: false },
     });
     assertEquals(sha(s.starship), starship0, "shell prompt untouched");
     assertEquals(sha(s.zshrc), zshrc0, "profile untouched");
     assertStringIncludes(Deno.readTextFileSync(s.settings), "statusline");
 
-    await setComponents({ bar: true, shell: true, usage: true, hook: false, memory: false });
+    await setComponents({ bar: true, shell: true, usage: true, hook: false, memory: false, terminal: false });
     assertStringIncludes(Deno.readTextFileSync(s.starship), "${custom.claude}");
     assertStringIncludes(Deno.readTextFileSync(s.zshrc), "init zsh");
 
-    await setComponents({ bar: false, shell: true, usage: false, hook: false, memory: false });
+    await setComponents({
+      bar: false,
+      shell: true,
+      usage: false,
+      hook: false,
+      memory: false,
+      terminal: false,
+    });
     assertEquals(sha(s.settings), settings0, "status bar off: settings.json back exactly");
     assert(!Deno.readTextFileSync(s.starship).includes("${custom.claude}"), "usage segment gone");
 
@@ -270,7 +282,7 @@ Deno.test("usage hook: added next to the user's own hooks, removed again exactly
     assert(commands.some((c: string) => c.endsWith(" hook")), JSON.stringify(commands));
     assertEquals(on.hooks.PreToolUse, mine.hooks.PreToolUse);
 
-    await setComponents({ ...ALL_COMPONENTS, hook: false, memory: false });
+    await setComponents({ ...ALL_COMPONENTS, hook: false, memory: false, terminal: false });
     const off = JSON.parse(Deno.readTextFileSync(s.settings));
     assertEquals(off.hooks, mine.hooks, "only our hook removed");
     assertStringIncludes(off.statusLine.command, "statusline", "status bar still on");
@@ -294,7 +306,7 @@ Deno.test("usage hook without the status bar keeps the user's statusLine", async
     const data = JSON.parse(Deno.readTextFileSync(s.settings));
     assertEquals(data.statusLine, { type: "command", command: "node old.mjs" });
     assertEquals(data.hooks.UserPromptSubmit.length, 1);
-    await setComponents({ ...ALL_COMPONENTS, bar: false, hook: false, memory: false });
+    await setComponents({ ...ALL_COMPONENTS, bar: false, hook: false, memory: false, terminal: false });
     assertEquals(JSON.parse(Deno.readTextFileSync(s.settings)), {
       statusLine: { type: "command", command: "node old.mjs" },
     });
@@ -308,7 +320,7 @@ Deno.test("an install from before the hook existed reads as hook off", async () 
   try {
     await install("rainbow", opts(s));
     const state = JSON.parse(Deno.readTextFileSync(join(s.installDir, "state.json")));
-    state.components = { bar: true, shell: true, usage: true, hook: false, memory: false };
+    state.components = { bar: true, shell: true, usage: true, hook: false, memory: false, terminal: false };
     Deno.writeTextFileSync(join(s.installDir, "state.json"), JSON.stringify(state));
     assertEquals(readInstalled()?.components.hook, false);
   } finally {
@@ -328,13 +340,114 @@ Deno.test("shell memory: its own block in each profile, removed exactly when swi
     assert(!text.includes("init zsh"), "the prompt part is separate");
 
     await setComponents({ ...ALL_COMPONENTS, shell: true, memory: true });
-    await setComponents({ ...ALL_COMPONENTS, shell: true, memory: false });
+    await setComponents({ ...ALL_COMPONENTS, shell: true, memory: false, terminal: false });
     assert(!Deno.readTextFileSync(s.zshrc).includes("memory >>>"));
     assertStringIncludes(Deno.readTextFileSync(s.zshrc), "init zsh");
 
     await setComponents({ ...ALL_COMPONENTS, memory: true });
     await uninstall();
     assertEquals(sha(s.zshrc), before);
+  } finally {
+    s.restore();
+  }
+});
+
+Deno.test("terminal settings: cmux/Ghostty get a block, removed exactly", async () => {
+  const s = sandbox();
+  try {
+    const cmux = join(s.home, "config.ghostty");
+    Deno.writeTextFileSync(
+      cmux,
+      'theme = "Midnight In Mojave"\nfont-family = "JetBrainsMono Nerd Font"\nfont-size = 18',
+    );
+    Deno.env.set("STARSHIP_STATUSLINE_TERMINALS", cmux);
+    const before = sha(cmux);
+    await install("rainbow", { ...opts(s), components: { ...ALL_COMPONENTS, terminal: true } });
+    const text = Deno.readTextFileSync(cmux);
+    assert(text.startsWith('theme = "Midnight In Mojave"\n'), "the user's lines stay");
+    const block = text.slice(text.indexOf("# >>> starship-statusline terminal >>>"));
+    for (
+      const line of [
+        'font-family = ""',
+        'font-family = "JetBrainsMono Nerd Font"',
+        "font-size = 15",
+        "macos-option-as-alt = left",
+      ]
+    ) assertStringIncludes(block, line);
+    await setComponents({ ...ALL_COMPONENTS, terminal: false });
+    assertEquals(sha(cmux), before);
+  } finally {
+    s.restore();
+  }
+});
+
+const wtSettings = {
+  defaultProfile: "{1}",
+  profiles: {
+    defaults: {},
+    list: [
+      { guid: "{1}", name: "Windows PowerShell", font: { face: "Cascadia Code NF" } },
+      { guid: "{2}", name: "PowerShell", font: { face: "CaskaydiaCove NF", size: 13, weight: "normal" } },
+      { guid: "{3}", name: "Old", fontFace: "Consolas", fontSize: 11 },
+      { guid: "{4}", name: "Command Prompt" },
+    ],
+  },
+};
+
+Deno.test("terminal settings: Windows Terminal default font, per-profile fonts cleared, restored exactly", async () => {
+  const s = sandbox();
+  try {
+    const wt = join(s.home, "settings.json.wt.json");
+    Deno.writeTextFileSync(wt, JSON.stringify(wtSettings, null, 4) + "\n");
+    Deno.env.set("STARSHIP_STATUSLINE_TERMINALS", wt);
+    const before = sha(wt);
+    await install("rainbow", { ...opts(s), components: { ...ALL_COMPONENTS, terminal: true } });
+    const on = JSON.parse(Deno.readTextFileSync(wt));
+    assertEquals(on.profiles.defaults.font, { face: "JetBrainsMono Nerd Font", size: 15 });
+    assertEquals(on.profiles.list[0].font, undefined);
+    assertEquals(on.profiles.list[1].font, { weight: "normal" }, "only face and size go");
+    assertEquals([on.profiles.list[2].fontFace, on.profiles.list[2].fontSize], [undefined, undefined]);
+    await uninstall();
+    assertEquals(sha(wt), before);
+  } finally {
+    s.restore();
+  }
+});
+
+Deno.test("terminal settings: Windows Terminal edited since: fonts put back, other edits kept", async () => {
+  const s = sandbox();
+  try {
+    const wt = join(s.home, "settings.json.wt.json");
+    Deno.writeTextFileSync(wt, JSON.stringify(wtSettings, null, 4) + "\n");
+    Deno.env.set("STARSHIP_STATUSLINE_TERMINALS", wt);
+    await install("rainbow", { ...opts(s), components: { ...ALL_COMPONENTS, terminal: true } });
+    const edited = JSON.parse(Deno.readTextFileSync(wt));
+    edited.theme = "dark";
+    Deno.writeTextFileSync(wt, JSON.stringify(edited, null, 4));
+    await setComponents({ ...ALL_COMPONENTS, terminal: false });
+    const after = JSON.parse(Deno.readTextFileSync(wt));
+    assertEquals(after.theme, "dark");
+    assertEquals(after.profiles, wtSettings.profiles);
+  } finally {
+    s.restore();
+  }
+});
+
+Deno.test("terminal settings: Windows Terminal with comments is left alone", async () => {
+  const s = sandbox();
+  try {
+    const wt = join(s.home, "settings.json.wt.json");
+    Deno.writeTextFileSync(wt, '{\n  // mine\n  "profiles": {}\n}\n');
+    Deno.env.set("STARSHIP_STATUSLINE_TERMINALS", wt);
+    const before = sha(wt);
+    const report = await install("rainbow", {
+      ...opts(s),
+      components: { ...ALL_COMPONENTS, terminal: true },
+    });
+    assertEquals(sha(wt), before);
+    assert(report.some((l) => l.includes("comments")), report.join("\n"));
+    await uninstall();
+    assertEquals(sha(wt), before);
   } finally {
     s.restore();
   }
