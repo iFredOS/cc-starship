@@ -378,20 +378,49 @@ function addTerminal(manifest: Manifest, report: string[]): void {
   }
 }
 
+/** JSON with keys in a fixed order, to compare content regardless of layout. */
+function canonical(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(canonical).join(",")}]`;
+  if (value && typeof value === "object") {
+    const o = value as Record<string, unknown>;
+    return `{${Object.keys(o).sort().map((k) => `${JSON.stringify(k)}:${canonical(o[k])}`).join(",")}}`;
+  }
+  return JSON.stringify(value);
+}
+
+const backupOf = (e: FileEntry) => (e.prior.kind === "file" ? e.prior.backup : "none");
+
+/**
+ * Writes `data` back to `entry.path`; when it is exactly what was there before install,
+ * the original file comes back byte for byte (or is removed, if there was none).
+ */
+function putBackJson(entry: FileEntry, data: Record<string, unknown>, indent: number): string {
+  const before = entry.prior.kind === "file"
+    ? parseJson(entry.prior.backup)
+    : entry.prior.kind === "missing"
+    ? {}
+    : null;
+  if (before && canonical(before) === canonical(data)) {
+    restorePrior(entry.path, entry.prior);
+    return "restored";
+  }
+  writeText(entry.path, JSON.stringify(data, null, indent) + "\n");
+  return "our changes taken out, yours kept";
+}
+
 function removeTerminal(manifest: Manifest, report: string[]): void {
   for (const entry of manifest.terminal ?? []) report.push(unhookProfile(entry));
   delete manifest.terminal;
   const wt = manifest.windowsTerminal;
   if (wt) {
-    const data = parseJson(wt.path);
-    if (currentSha(wt.path) === wt.written || !data) {
-      restorePrior(wt.path, wt.prior);
-      report.push(`${wt.path}: restored`);
+    const data = lstat(wt.path) ? parseJson(wt.path) : {};
+    if (!data) {
+      report.push(
+        `${wt.path}: can't be read as JSON any more, so it was left as is (backup: ${backupOf(wt)})`,
+      );
     } else {
-      // Windows Terminal rewrote it since: put back only the fonts.
       restoreWindowsTerminal(data, wt.fonts);
-      writeText(wt.path, JSON.stringify(data, null, 4) + "\n");
-      report.push(`${wt.path}: fonts restored, your other changes kept`);
+      report.push(`${wt.path}: ${putBackJson(wt, data, 4)}`);
     }
     delete manifest.windowsTerminal;
   }
@@ -453,18 +482,13 @@ function syncSettings(state: InstalledState, manifest: Manifest, report: string[
 function removeSettings(manifest: Manifest, report: string[], bin = ""): void {
   const entry = manifest.settings;
   if (!entry) return;
-  if (currentSha(entry.path) === entry.written || !lstat(entry.path)) {
-    restorePrior(entry.path, entry.prior);
-    report.push(`${entry.path}: restored`);
-  } else {
-    // Edited since install: keep the edits, put back only the statusLine and drop our hook.
-    const data = readSettings(entry.path) ?? {};
-    if (entry.hadStatusLine) data.statusLine = entry.priorStatusLine;
-    else delete data.statusLine;
-    setUsageHook(data, bin, false);
-    writeText(entry.path, JSON.stringify(data, null, 2) + "\n");
-    report.push(`${entry.path}: statusLine restored, your other changes kept`);
-  }
+  // Put back only what we set; anything else changed since install (by you, or merged
+  // into our later writes) stays.
+  const data = readSettings(entry.path) ?? {};
+  if (entry.hadStatusLine) data.statusLine = entry.priorStatusLine;
+  else delete data.statusLine;
+  setUsageHook(data, bin, false);
+  report.push(`${entry.path}: ${putBackJson(entry, data, 2)}`);
   delete manifest.settings;
 }
 

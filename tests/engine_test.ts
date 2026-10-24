@@ -469,3 +469,40 @@ Deno.test("a hook left by the old starship-statusline name is replaced, not doub
     s.restore();
   }
 });
+
+Deno.test("settings changes made between installs survive uninstall", async () => {
+  const s = sandbox();
+  try {
+    Deno.writeTextFileSync(s.settings, '{"model": "opus"}\n');
+    await install("rainbow", opts(s));
+    // You add a permission; a later theme switch rewrites the file with it included.
+    const data = JSON.parse(Deno.readTextFileSync(s.settings));
+    data.permissions = { allow: ["Bash(ls)"] };
+    Deno.writeTextFileSync(s.settings, JSON.stringify(data, null, 2) + "\n");
+    await setTheme("ember");
+    await uninstall();
+    assertEquals(JSON.parse(Deno.readTextFileSync(s.settings)), {
+      model: "opus",
+      permissions: { allow: ["Bash(ls)"] },
+    });
+  } finally {
+    s.restore();
+  }
+});
+
+Deno.test("Windows Terminal changes made between installs survive uninstall", async () => {
+  const s = sandbox();
+  try {
+    const wt = join(s.home, "settings.json.wt.json");
+    Deno.writeTextFileSync(wt, JSON.stringify(wtSettings, null, 4) + "\n");
+    Deno.env.set("CC_STARSHIP_TERMINALS", wt);
+    await install("rainbow", { ...opts(s), components: { ...ALL_COMPONENTS, terminal: true } });
+    const data = JSON.parse(Deno.readTextFileSync(wt));
+    data.theme = "dark";
+    Deno.writeTextFileSync(wt, JSON.stringify(data, null, 4) + "\n");
+    await setComponents({ ...ALL_COMPONENTS, terminal: false });
+    assertEquals(JSON.parse(Deno.readTextFileSync(wt)).theme, "dark");
+  } finally {
+    s.restore();
+  }
+});
