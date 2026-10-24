@@ -141,7 +141,8 @@ left alone. On Windows it uses the Starship prompt.
 
 **Terminal settings.** The same font and keys everywhere: JetBrainsMono Nerd Font, size 14,
 and Option working as Alt in cmux and Ghostty. In Windows Terminal it becomes the default font
-for every profile. The font is installed if missing.
+for every profile. The font is installed if missing (if the download fails, everything else
+still installs; get the font later from Components → Nerd Font).
 
 **oh-my-posh.** If it still starts in a profile or draws your status line, install and `status`
 say so: two prompt engines conflict, and Starship draws the same kind of prompt about 3× faster.
@@ -178,7 +179,8 @@ Uninstall, or switching a part off, uses that record.
 | shell memory | the same profiles, in a block of its own | the block removed |
 | Windows PowerShell's script setting, only when it blocks scripts (a new Windows account does, so no profile would run) | your account's execution policy, set to `RemoteSigned` (PowerShell 7's default) | your previous setting, unless you changed it since |
 | terminal font and keys | cmux `config.ghostty`, `~/.config/ghostty/config`; Windows Terminal `settings.json` | the block removed; Windows Terminal's face and size put back |
-| Starship itself, if missing or outdated | updated through brew, winget or Scoop when they installed it; otherwise the latest release is downloaded and its checksum verified | left installed (`cc-starship starship remove` removes it) |
+| Nerd Fonts this app installed | your fonts folder (Windows: per user, no admin needed) | removed |
+| Starship itself, if missing or outdated | updated through brew, winget or Scoop when they installed it; otherwise the latest release is downloaded into the program folder and its checksum verified | the downloaded one goes with the program folder; one from brew, winget or Scoop stays (`cc-starship starship remove` removes it) |
 
 Settings files with comments are never rewritten: the program stops and says so instead.
 

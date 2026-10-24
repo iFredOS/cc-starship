@@ -37,7 +37,8 @@ w = sys.argv[1]
 raw = open(f"{w}/tui.raw", "rb").read().decode("utf-8", "replace").split("\x1b[?1049l")[0]  # until the panel exits
 frames = [re.sub(r"\x1b\[\?[0-9;]*[hl]", "", f).replace("\r\n", "\n") for f in raw.split("\x1b[H\x1b[2J") if f.strip()]
 plain = lambda f: re.sub(r"\x1b\[[0-9;?]*[A-Za-z]", "", f)
-looks = next((f for f in frames if "hide explanations" in plain(f)), None)
+# The last Looks frame: previews render in the background, so the first ones may not have it yet.
+looks = next((f for f in reversed(frames) if "hide explanations" in plain(f) and "rendering the preview" not in plain(f)), None)
 comps = next((f for f in frames if "╭─ Components" in plain(f)), None)
 if not (looks and comps):
     sys.exit(f"panel capture: {len(frames)} frames, looks={bool(looks)} components={bool(comps)}; "

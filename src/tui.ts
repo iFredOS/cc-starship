@@ -259,7 +259,7 @@ function fontHint(theme: Theme): string {
   const terminalApp = Deno.env.get("TERM_PROGRAM") === "Apple_Terminal";
   const tip = terminalApp
     ? "Terminal.app's default font has none: pick a Nerd Font in Terminal settings, or use iTerm, Ghostty or cmux."
-    : "Boxes or ? instead of icons mean your terminal font isn't a Nerd Font (see Components).";
+    : "Boxes or ? instead of icons: your terminal font isn't a Nerd Font (see Components).";
   return ` ${paint(theme.dim, "Icons")} ${paint(theme.text, icons)}   ${paint(theme.dim, tip)}`;
 }
 
@@ -394,8 +394,8 @@ export async function runUi(): Promise<number> {
       ...(roomy ? ["", fontHint(t)] : []),
       ...footer([
         ["↑↓", "choose"],
-        ["Space", "on/off or change"],
-        ["⏎", "update Starship · pick a font"],
+        ["Space", "change"],
+        ["⏎", "update Starship · fonts"],
         ["X", "remove Starship"],
         ["Tab", "looks"],
         ["Q", "quit"],
