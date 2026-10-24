@@ -1,0 +1,26 @@
+{
+  "imports": {
+    "@std/assert": "jsr:@std/assert@1"
+  },
+  "tasks": {
+    "gen": "deno run --allow-read --allow-write scripts/gen.ts",
+    "test": "deno run --allow-read --allow-write scripts/gen.ts --check && deno test -A tests/",
+    "build": "deno task gen && deno run -A scripts/build.ts"
+  },
+  "fmt": {
+    "lineWidth": 110,
+    "exclude": [
+      "src/assets.gen.ts",
+      "presets/",
+      "README.md",
+      "bench-results/",
+      "fixture.json"
+    ]
+  },
+  "lint": {
+    "exclude": [
+      "src/assets.gen.ts",
+      "fixture.json"
+    ]
+  }
+}

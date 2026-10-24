@@ -3,13 +3,15 @@
 
 Both bars run against the same payload in a git repository, alternated
 round-robin. HOME points at a scratch copy so cc-memento's metrics events,
-snapshots and cmux newsfeed pushes don't touch the real state.
+snapshots and cmux newsfeed pushes don't touch the real state; the compiled
+binary (dist/, from `deno task build`) is installed into that scratch home.
 
 Usage: bench.py [runs] [repo]
 """
 import json
 import os
 import pathlib
+import platform
 import shutil
 import statistics
 import subprocess
@@ -61,23 +63,35 @@ def payload() -> bytes:
     }).encode()
 
 
+def install_binary(env) -> pathlib.Path:
+    """Installs the compiled binary (deno task build) into the scratch home; returns its install folder."""
+    arch = "aarch64" if platform.machine() == "arm64" else "x86_64"
+    binary = HERE / "dist" / f"starship-statusline-{arch}-apple-darwin"
+    if not binary.exists():
+        raise SystemExit(f"{binary} not found: run `deno task build` first")
+    subprocess.run([str(binary), "install", "--preset", "rainbow", "--no-starship-update"],
+                   env={**env, "STARSHIP_STATUSLINE_PROFILES": ""}, check=True, capture_output=True)
+    return pathlib.Path(env["HOME"]) / ".local/share/starship-statusline"
+
+
 def main() -> None:
     home = scratch_home()
     env = {**os.environ, "HOME": str(home)}
-    env.pop("CLAUDE_CONFIG_DIR", None)
+    for key in ("CLAUDE_CONFIG_DIR", "STARSHIP_CONFIG", "STARSHIP_STATUSLINE_HOME"):
+        env.pop(key, None)
+    installed = install_binary(env)
     data = payload()
     commands = {
         "oh-my-posh bar (full)": ["node", str(OMP_WRAPPER)],
-        "Starship bar (full, deno)": ["deno", "run", "-A", str(HERE / "statusline.mjs")],
-        "Starship bar (full, node)": ["node", str(HERE / "statusline.mjs")],
+        "Starship bar (full)": [str(installed / "bin/starship-statusline"), "statusline"],
         "  node startup only": ["node", "-e", ""],
-        "  deno startup only": ["deno", "eval", ""],
         "  oh-my-posh claude only": ["oh-my-posh", "claude", "--config", str(OMP_THEME)],
-        "  starship prompt only": ["env", f"STARSHIP_CONFIG={HERE / 'statusline.toml'}", "STARSHIP_SHELL=",
+        "  starship prompt only": ["env", f"STARSHIP_CONFIG={installed / 'statusline.toml'}", "STARSHIP_SHELL=",
                                    "starship", "prompt"],
         "  git status only": ["git", "status", "--branch", "--porcelain", "--untracked-files=no"],
+        "  shell usage segment": [str(installed / "bin/starship-statusline"), "usage"],
     }
-    silent = {"  node startup only", "  deno startup only", "  git status only"}
+    silent = {"  node startup only", "  git status only", "  shell usage segment"}
 
     def run(name, cmd):
         start = time.perf_counter_ns()
