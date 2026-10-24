@@ -157,3 +157,37 @@ Deno.test("each segment uses its preset text color", () => {
   assertStringIncludes(out, `38;2;${rgb("#ffca63")}`);
   assert(stripAnsi(out).includes("✻ Opus 5.5"));
 });
+
+/** A real repo on main with a linked worktree beside it, on its own branch. */
+function realWorktree() {
+  const root = Deno.realPathSync(tempDir());
+  const repo = join(root, "app"), wt = join(root, "app-login");
+  const git = (cwd: string, ...args: string[]) =>
+    new Deno.Command("git", { args: ["-c", "user.name=t", "-c", "user.email=t@example.com", ...args], cwd })
+      .outputSync();
+  Deno.mkdirSync(repo);
+  git(repo, "init", "-q", "-b", "main");
+  Deno.writeTextFileSync(join(repo, "a.txt"), "a\n");
+  git(repo, "add", "-A");
+  git(repo, "commit", "-qm", "init");
+  git(repo, "worktree", "add", "-q", "-b", "login-form", wt);
+  return { repo, wt };
+}
+
+Deno.test("real worktree, as Claude Code reports it (--worktree / EnterWorktree)", () => {
+  const { wt } = realWorktree();
+  const out = plain({
+    model: { display_name: "x" },
+    workspace: { current_dir: wt, git_worktree: "app-login" },
+  });
+  // The worktree's name, then its real branch (not one Claude Code derived from the name).
+  assertStringIncludes(out, "\u{f0645} app-login \u{e725} login-form");
+});
+
+Deno.test("real worktree that Claude Code doesn't flag: its own branch still shows", () => {
+  const { repo, wt } = realWorktree();
+  assertStringIncludes(plain({ model: { display_name: "x" }, workspace: { current_dir: wt } }), "login-form");
+  const main = plain({ model: { display_name: "x" }, workspace: { current_dir: repo } });
+  assertStringIncludes(main, "\u{e725} main");
+  assert(!main.includes("login-form"), "the main checkout shows main");
+});
