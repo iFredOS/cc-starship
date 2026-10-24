@@ -341,7 +341,7 @@ export async function runUi(): Promise<number> {
   const footer = (pairs: [string, string][], roomy = true) => [
     ...(roomy ? [""] : []),
     message ? ` ${message}` : "",
-    keys(pairs, theme()),
+    ...keys(pairs, theme(), columns() - 1),
   ];
 
   const looks = ({ explain, roomy }: { explain: boolean; roomy: boolean }) => {

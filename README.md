@@ -214,7 +214,7 @@ Written in TypeScript for [Deno](https://deno.com). `deno compile` turns it into
 self-contained program per platform.
 
 ```sh
-deno task test     # 93 tests, including install/uninstall round trips in a scratch home
+deno task test     # the tests, including install/uninstall round trips in a scratch home
 deno task build    # dist/: macOS arm64 and x64, Windows x64
 python3 bench.py   # this status bar vs the oh-my-posh one (needs a build)
 scripts/screenshots/make.sh   # regenerates docs/images from the real program (macOS)

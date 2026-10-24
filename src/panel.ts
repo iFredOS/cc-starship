@@ -204,10 +204,20 @@ export function fitView(layouts: (() => string[])[], rows: number): string[] {
   return lines.slice(0, Math.max(1, rows));
 }
 
-/** Key hints as keycaps: `[["↑↓", "choose"], …]`. */
-export function keys(pairs: [string, string][], theme: Theme): string {
-  return " " +
-    pairs.map(([k, label]) =>
-      `${bg(theme.keycap)}${fg(theme.text)}${BOLD} ${k} ${RESET} ${paint(theme.dim, label)}`
-    ).join("   ");
+/** Key hints as keycaps: `[["↑↓", "choose"], …]`, on as many lines as `width` needs. */
+export function keys(pairs: [string, string][], theme: Theme, width = Infinity): string[] {
+  const hint = ([k, label]: [string, string]) =>
+    `${bg(theme.keycap)}${fg(theme.text)}${BOLD} ${k} ${RESET} ${paint(theme.dim, label)}`;
+  const lines: string[] = [];
+  let line = "";
+  for (const pair of pairs) {
+    const next = line ? `${line}   ${hint(pair)}` : ` ${hint(pair)}`;
+    if (line && visibleWidth(next) > width) {
+      lines.push(line);
+      line = ` ${hint(pair)}`;
+    } else {
+      line = next;
+    }
+  }
+  return [...lines, line];
 }

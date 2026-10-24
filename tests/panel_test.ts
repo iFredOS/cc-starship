@@ -79,8 +79,27 @@ Deno.test("header: breathing room, the logo pill, the version, tabs as chips", (
 });
 
 Deno.test("key hints: each key as a keycap with its label", () => {
-  const line = keys([["↑↓", "choose"], ["⏎", "use this look"], ["Q", "quit"]], theme);
-  assertEquals(stripAnsi(line).replace(/\s+/g, " ").trim(), "↑↓ choose ⏎ use this look Q quit");
+  const lines = keys([["↑↓", "choose"], ["⏎", "use this look"], ["Q", "quit"]], theme, 100);
+  assertEquals(lines.length, 1);
+  assertEquals(stripAnsi(lines[0]).replace(/\s+/g, " ").trim(), "↑↓ choose ⏎ use this look Q quit");
+});
+
+Deno.test("key hints too wide for the window go on a second line, never cut", () => {
+  const pairs: [string, string][] = [
+    ["↑↓", "choose"],
+    ["Space", "on/off or change"],
+    ["⏎", "update Starship · pick a font"],
+    ["X", "remove Starship"],
+    ["Tab", "looks"],
+    ["Q", "quit"],
+  ];
+  for (const width of [119, 80, 50]) {
+    const lines = keys(pairs, theme, width);
+    for (const l of lines) assert(visibleWidth(l) <= width, `${width}: ${stripAnsi(l)}`);
+    const text = lines.map(stripAnsi).join(" ").replace(/\s+/g, " ");
+    for (const [k, label] of pairs) assertStringIncludes(text, `${k} ${label}`, `${width}`);
+  }
+  assertEquals(keys(pairs, theme, 119).length, 2);
 });
 
 Deno.test("fitView: the first layout that fits the window; never the top cut off", () => {
