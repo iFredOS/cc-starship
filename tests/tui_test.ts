@@ -1,7 +1,10 @@
-import { assert, assertEquals } from "@std/assert";
-import { componentLines, previewBlock } from "../src/tui.ts";
+import { assert, assertEquals, assertStringIncludes } from "@std/assert";
+import { componentLines, OFF, ON, previewBlock } from "../src/tui.ts";
 import type { Prefs } from "../src/when.ts";
 import { stripAnsi } from "./helpers.ts";
+import { rgb } from "../src/color.ts";
+import { themeOf } from "../src/panel.ts";
+import { findPreset } from "../src/presets.ts";
 
 const sample = ["BAR1", "BAR2", "BAR3", "PROMPT"];
 
@@ -52,9 +55,9 @@ const base = {
 
 Deno.test("components panel: switches, Starship version and font", () => {
   const text = componentLines(base, 0).map(stripAnsi).join("\n");
-  assert(text.includes("[x] Claude Code status bar"), text);
-  assert(text.includes("[x] Shell prompt"));
-  assert(text.includes("[x] Claude usage in the prompt"));
+  assert(text.includes(`${ON} Claude Code status bar`), text);
+  assert(text.includes(`${ON} Shell prompt`));
+  assert(text.includes(`${ON} Claude usage in the prompt`));
   assert(text.includes("1.27.0") && text.includes("latest"));
   assert(text.includes("JetBrainsMono Nerd Font"));
   assert(stripAnsi(componentLines(base, 0)[0]).includes("▸"), "selected row marked");
@@ -71,7 +74,7 @@ Deno.test("components panel: update available, missing Starship, usage needing t
     components: { bar: true, shell: false, usage: true, hook: false, memory: false, terminal: false },
   }, 0)
     .map(stripAnsi).join("\n");
-  assert(noShell.includes("[ ] Shell prompt") && noShell.includes("needs the shell prompt"), noShell);
+  assert(noShell.includes(`${OFF} Shell prompt`) && noShell.includes("needs the shell prompt"), noShell);
   const noFont = componentLines({ ...base, fonts: [] }, 8).map(stripAnsi).join("\n");
   assert(noFont.includes("none found"), noFont);
 });
@@ -90,10 +93,10 @@ Deno.test("components panel: language and clock rows show the choice and a sampl
 Deno.test("components panel: the add-ons, and what the usage hook costs in tokens", () => {
   const all = { bar: true, shell: true, usage: true, hook: true, memory: true, terminal: true };
   const text = componentLines({ ...base, components: all }, 0).map(stripAnsi).join("\n");
-  assert(text.includes("[x] Usage for Claude"), text);
+  assert(text.includes(`${ON} Usage for Claude`), text);
   assert(/tokens per prompt/.test(text), "the token cost is shown up front: " + text);
-  assert(text.includes("[x] Shell memory"), text);
-  assert(text.includes("[x] Terminal settings") && text.includes("JetBrainsMono"), text);
+  assert(text.includes(`${ON} Shell memory`), text);
+  assert(text.includes(`${ON} Terminal settings`) && text.includes("JetBrainsMono"), text);
   const noBar = componentLines({ ...base, components: { ...all, bar: false } }, 0).map(stripAnsi).join("\n");
   assert(noBar.includes("needs the status bar"), noBar);
 });
@@ -104,4 +107,12 @@ Deno.test("components panel: when Claude starts getting usage", () => {
   assert(lines(undefined).includes("Send usage to Claude") && lines(undefined).includes("from 50%"), lines());
   assert(lines(0).includes("every prompt"), lines(0));
   assert(lines(90).includes("from 90%"), lines(90));
+});
+
+Deno.test("components panel: switches in the look's accent, the cursor row marked", () => {
+  const theme = themeOf(findPreset("neon")!);
+  const lines = componentLines({ ...base, components: { ...base.components, hook: false } }, 0, theme);
+  assertStringIncludes(lines[0], `38;2;${rgb(theme.accent).join(";")}`, "the cursor row uses the accent");
+  assert(stripAnsi(lines[0]).includes("▸"));
+  assert(stripAnsi(lines.join("\n")).includes(`${OFF} Usage for Claude`));
 });

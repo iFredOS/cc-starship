@@ -4,7 +4,7 @@
 Both are drawn by [Starship](https://starship.rs). One small program installs everything,
 switches looks, and uninstalls cleanly, on macOS and Windows.
 
-![The Claude Code status bar and the shell prompt, Rainbow look](docs/images/hero.png)
+![The Claude Code status bar and the shell prompt, Fusain look](docs/images/hero.png)
 
 - **See what matters while you work:** model, effort, branch, lines changed, how much of the
   context window is used, and your 5-hour and 7-day limits with their reset times.
@@ -73,8 +73,9 @@ To change the look later, run the installed copy again:
 Run with no arguments, the program opens a keyboard control panel. **Tab** switches between
 its two screens.
 
-**Looks**: ↑/↓ to browse, with a live preview of both the status bar and the prompt, each
-explained part by part (**E** hides the explanations). **Enter** installs with that look, or
+**Looks**: every look at once, each with a swatch of its colors; the arrow keys browse them,
+and the whole panel takes on the colors of the look under the cursor. Below, a live preview of
+both the status bar and the prompt, explained part by part (**E** hides the explanations). **Enter** installs with that look, or
 switches to it. **U** uninstalls.
 
 ![The Looks screen with the preview and explanations](docs/images/panel-looks.png)
@@ -93,10 +94,11 @@ use: the preview shows exactly what that terminal and its font will draw.
 
 Fifteen looks, chosen for contrast and for colors that stay distinct from each other. Six of them:
 
-![Six looks: Rainbow, Gray, Nord, Tokyo Night, Synthwave, Ember](docs/images/presets.png)
+![Six looks: Fusain, Rainbow, Nord, Tokyo Night, Synthwave, Ember](docs/images/presets.png)
 
-All fifteen: Rainbow, Sunset, Autumn, Ocean, Jewel, Mocha, Nord, Berry, Tidepool, Synthwave,
-Gray, Neon, Ice, Ember, Tokyo Night. The status bar and the prompt always change together.
+All fifteen: **Fusain** (the author's own warm charcoal grays, and the default), Rainbow, Sunset,
+Autumn, Ocean, Jewel, Mocha, Nord, Berry, Tidepool, Synthwave, Neon, Ice, Ember, Tokyo Night.
+The status bar and the prompt always change together.
 
 ## Reading the status bar
 

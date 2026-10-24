@@ -3,6 +3,7 @@
 // formats follow the cc-memento oh-my-posh bar, with Nerd Font icons.
 import { mkdirSync, renameSync, writeFileSync } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
+import { bg, contrast, fg } from "./color.ts";
 import { saveSnapshot } from "./hook.ts";
 import { home } from "./paths.ts";
 import type { Preset } from "./presets.ts";
@@ -32,22 +33,6 @@ const RESTORE = "\x00";
 const RESTORE_ALL = "\x01";
 /** the preset's accent color, or the segment's text color where the accent is hard to see */
 const ACCENT = "\x02";
-const rgb = (hex: string) => hex.match(/\w\w/g)!.map((h) => parseInt(h, 16));
-const fg = (hex: string) => `${ESC}[38;2;${rgb(hex).join(";")}m`;
-const bg = (hex: string) => `${ESC}[48;2;${rgb(hex).join(";")}m`;
-
-/** WCAG contrast ratio between two colors. */
-function contrast(a: string, b: string): number {
-  const lum = (hex: string) => {
-    const [r, g, b] = rgb(hex).map((c) => {
-      const s = c / 255;
-      return s <= 0.04045 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4;
-    });
-    return 0.2126 * r + 0.7152 * g + 0.0722 * b;
-  };
-  const [hi, lo] = [lum(a), lum(b)].sort((x, y) => y - x);
-  return (hi + 0.05) / (lo + 0.05);
-}
 
 // Nerd Font icons, as escapes: raw glyphs are invisible and get lost in edits.
 const ICON = {

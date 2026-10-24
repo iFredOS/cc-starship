@@ -26,7 +26,8 @@ import {
 import { HOOK_COST } from "./hook.ts";
 import { isWindows, paths } from "./paths.ts";
 import { TERMINAL_FONT, TERMINAL_SIZE } from "./terminal.ts";
-import { allPresets, DEFAULT_PRESET, type Preset } from "./presets.ts";
+import { allPresets, DEFAULT_PRESET, findPreset, type Preset } from "./presets.ts";
+import { box, gridShape, header, keys, looksGrid, paint, type Theme, themeOf } from "./panel.ts";
 import {
   DEFAULT_HOOK_FROM,
   DEFAULT_PREFS,
@@ -49,7 +50,9 @@ const bold = (s: string) => `${ESC}[1m${s}${ESC}[0m`;
 const dim = (s: string) => `${ESC}[2m${s}${ESC}[0m`;
 const green = (s: string) => `${ESC}[32m${s}${ESC}[0m`;
 const yellow = (s: string) => `${ESC}[33m${s}${ESC}[0m`;
-const LIST_HEIGHT = 7;
+/** Switch icons on the Components screen. */
+export const ON = "\u{f205}", OFF = "\u{f204}";
+const defaultTheme = () => themeOf(findPreset(DEFAULT_PRESET)!);
 
 // What each preview line shows, in the order its segments appear.
 const EXPLAIN = {
@@ -69,16 +72,17 @@ const EXPLAIN = {
 };
 
 /** The preview: status bar and shell prompt as separate titled blocks, optionally explained. */
-export function previewBlock(lines: string[], opts: { explain: boolean }): string[] {
+export function previewBlock(lines: string[], opts: { explain: boolean; theme?: Theme }): string[] {
+  const heading = (s: string) => (opts.theme ? `${ESC}[1m${paint(opts.theme.second, s)}` : bold(s));
   const bar = lines.slice(0, -1);
   const prompt = lines[lines.length - 1] ?? "";
   const caption = (texts: string[] | undefined) =>
     opts.explain ? (texts ?? []).map((t) => dim(`    ${t}`)) : [];
   return [
-    bold("Claude Code status bar"),
+    heading("Claude Code status bar"),
     ...bar.flatMap((line, i) => [`  ${line}`, ...caption(EXPLAIN.bar[i])]),
     "",
-    bold("Shell prompt"),
+    heading("Shell prompt"),
     `  ${prompt}`,
     ...caption(EXPLAIN.prompt),
   ];
@@ -119,7 +123,7 @@ const LANGUAGE_NAMES = { en: "English", "fr-CA": "Français (Québec)" };
 const CLOCK_NAMES = { "24h": "24 h", "12h": "12 h" };
 
 /** The Components screen's rows, `selected` marked. */
-export function componentLines(info: PanelInfo, selected: number): string[] {
+export function componentLines(info: PanelInfo, selected: number, theme = defaultTheme()): string[] {
   const c = info.components;
   const resolved = resolvePrefs(info.prefs, info.locale);
   const now = new Date();
@@ -128,7 +132,7 @@ export function componentLines(info: PanelInfo, selected: number): string[] {
     now,
     resolved,
   );
-  const box = (on: boolean) => (on ? green("[x]") : "[ ]");
+  const box = (on: boolean) => (on ? paint(theme.accent, ON) : paint(theme.dim, OFF));
   const s = info.starship;
   const starshipStatus = !s
     ? yellow("not installed: Enter downloads it")
@@ -145,10 +149,10 @@ export function componentLines(info: PanelInfo, selected: number): string[] {
     }`,
     `${box(c.hook)} Usage for Claude            ${
       c.bar
-        ? dim("Claude sees context · 5h · 7d; ") + yellow(`costs ${HOOK_COST}`)
+        ? dim("Claude sees your usage; ") + yellow(`costs ${HOOK_COST}`)
         : dim("needs the status bar")
     }`,
-    `    Send usage to Claude        ${
+    `  Send usage to Claude        ${
       (info.prefs.hookFrom ?? DEFAULT_HOOK_FROM) === 0
         ? "every prompt"
         : `from ${info.prefs.hookFrom ?? DEFAULT_HOOK_FROM}%`
@@ -167,22 +171,22 @@ export function componentLines(info: PanelInfo, selected: number): string[] {
         }`,
       )
     }`,
-    `    Starship                    ${starshipStatus}`,
-    `    Nerd Font                   ${
+    `  Starship                    ${starshipStatus}`,
+    `  Nerd Font                   ${
       info.fonts.length
         ? green(fontFamilies(info.fonts).slice(0, 3).join(", "))
         : yellow("none found: Enter to pick one")
     }`,
-    `    Language                    ${
+    `  Language                    ${
       info.prefs.language === "auto"
         ? `Auto (${LANGUAGE_NAMES[resolved.language]})`
         : LANGUAGE_NAMES[info.prefs.language]
     }   ${dim(`dates look like: ${sample}`)}`,
-    `    Clock                       ${
+    `  Clock                       ${
       info.prefs.clock === "auto" ? `Auto (${CLOCK_NAMES[resolved.clock]})` : CLOCK_NAMES[info.prefs.clock]
     }`,
   ];
-  return rows.map((r, i) => (i === selected ? bold(`  ▸ `) + r : `    ${r}`));
+  return rows.map((r, i) => (i === selected ? `${ESC}[1m${paint(theme.accent, "▸")} ${r}` : `  ${r}`));
 }
 
 const encoder = new TextEncoder();
@@ -191,6 +195,8 @@ const write = (s: string) => Deno.stdout.writeSync(encoder.encode(s));
 type Key =
   | "up"
   | "down"
+  | "left"
+  | "right"
   | "enter"
   | "quit"
   | "back"
@@ -207,6 +213,8 @@ function parseKey(bytes: Uint8Array): Key {
   const s = new TextDecoder().decode(bytes);
   if (s === `${ESC}[A` || s === "k" || s === "w") return "up";
   if (s === `${ESC}[B` || s === "j" || s === "s") return "down";
+  if (s === `${ESC}[D` || s === "h") return "left";
+  if (s === `${ESC}[C` || s === "l") return "right";
   if (s === "\r" || s === "\n") return "enter";
   if (s === ESC) return "back";
   if (s === "q" || s === "Q" || s === "\x03") return "quit";
@@ -226,13 +234,13 @@ async function readKey(): Promise<Key> {
   return n === null ? "quit" : parseKey(buf.subarray(0, n));
 }
 
-function fontHint(): string {
+function fontHint(theme: Theme): string {
   const icons = "\u{f07b} \u{e725} \u{f1c0} \u{f06d} \u{f252} \u{f073} \u{e0b6}\u{e0b0}\u{e0b4}";
   const terminalApp = Deno.env.get("TERM_PROGRAM") === "Apple_Terminal";
   const tip = terminalApp
     ? "Terminal.app's default font has none: pick a Nerd Font in Terminal settings, or use iTerm, Ghostty or cmux."
     : "Boxes or ? instead of icons mean your terminal font isn't a Nerd Font (see Components).";
-  return `Icons: ${icons}   ${dim(tip)}`;
+  return ` ${paint(theme.dim, "Icons")} ${paint(theme.text, icons)}   ${paint(theme.dim, tip)}`;
 }
 
 type Screen = "looks" | "components" | "fonts";
@@ -259,88 +267,114 @@ export async function runUi(): Promise<number> {
     return previews.get(p.id)!;
   };
 
-  const header = () => {
-    const tab = (name: string, on: boolean) => (on ? bold(`[ ${name} ]`) : dim(`  ${name}  `));
-    return [
-      bold(`cc-starship ${VERSION}`) + dim("  ·  Claude Code status bar + shell prompt"),
-      `${tab("Looks", screen === "looks")} ${tab("Components", screen !== "looks")}   ${dim("Tab switches")}`,
-      "",
-    ];
+  const width = () => {
+    try {
+      return Math.min(Deno.consoleSize().columns - 2, 116);
+    } catch {
+      return 100;
+    }
   };
+  // The panel takes the colors of the look under the cursor.
+  const theme = () => themeOf(presets[index]);
+  const inUse = () => (state ? findPreset(state.theme)?.id : undefined);
+  const footer = (pairs: [string, string][]) => ["", message ? ` ${message}` : "", keys(pairs, theme())];
 
   const looks = () => {
-    const p = presets[index];
-    const top = Math.min(
-      Math.max(0, index - Math.floor(LIST_HEIGHT / 2)),
-      Math.max(0, presets.length - LIST_HEIGHT),
-    );
-    const list = presets.slice(top, top + LIST_HEIGHT).map((q, i) => {
-      const mark = q.id === state?.theme ? green(" ● in use") : "";
-      return top + i === index ? bold(`  ▸ ${q.name}`) + mark : `    ${q.name}${mark}`;
-    });
+    const t = theme(), p = presets[index], w = width();
+    const mark = inUse() ? ` · ${paint(t.second, "●")}${paint(t.dim, " in use")}` : "";
+    const legend = `${paint("#fabd2f", "amber")}${paint(t.dim, " at 70% · ")}${paint("#fb4934", "red ▲")}${
+      paint(t.dim, " at 90%")
+    }`;
     return [
-      `Choose a look (${index + 1} of ${presets.length}):`,
-      top > 0 ? dim("    ↑ more") : "",
-      ...list,
-      top + LIST_HEIGHT < presets.length ? dim("    ↓ more") : "",
+      ...box("Choose a look", looksGrid(presets, { index, inUse: inUse(), width: w - 4, theme: t }), {
+        width: w,
+        theme: t,
+        right: paint(t.dim, `${index + 1} of ${presets.length}`) + mark,
+      }),
       "",
-      dim(`─── Preview: ${p.name} `.padEnd(60, "─")),
-      ...(info
-        ? previewBlock(preview(p), { explain })
-        : [dim("  (the preview appears once Starship is installed)")]),
-      "",
-      fontHint(),
-      state
-        ? dim(`Installed · current look: ${presets.find((q) => q.id === state!.theme)?.name}`)
-        : dim("Not installed yet"),
-      "",
-      message ||
-      dim(
-        `↑/↓ choose   Enter ${state ? "use this look" : "install with this look"}   E ${
-          explain ? "hide" : "show"
-        } explanations   ${state ? "U uninstall   " : ""}Q quit`,
+      ...box(
+        `Preview · ${p.name}`,
+        info
+          ? previewBlock(preview(p), { explain, theme: t })
+          : [paint(t.dim, "(the preview appears once Starship is installed)")],
+        { width: w, theme: t, right: legend },
       ),
+      "",
+      fontHint(t),
+      state ? "" : ` ${paint(t.dim, "Not installed yet: Enter installs with the look under the cursor.")}`,
+      ...footer([
+        ["↑↓←→", "choose"],
+        ["⏎", state ? "use this look" : "install with this look"],
+        ["E", explain ? "hide explanations" : "explanations"],
+        ...(state ? [["U", "uninstall"] as [string, string]] : []),
+        ["Tab", "components"],
+        ["Q", "quit"],
+      ]),
     ];
   };
 
-  const componentsScreen = () => [
-    state
+  const componentsScreen = () => {
+    const t = theme();
+    const intro = state
       ? "Switch parts on or off; changes apply right away."
-      : "Choose what to install, then pick a look and press Enter.",
-    "",
-    ...componentLines({ installed: !!state, components, starship: info, latest, fonts, prefs }, row),
-    "",
-    fontHint(),
-    "",
-    message ||
-    dim(
-      "↑/↓ choose   Space on/off or change   Enter update Starship / pick a font   X remove Starship   Q quit",
-    ),
-  ];
+      : "Choose what to install, then pick a look and press Enter.";
+    return [
+      ...box("Components", [
+        paint(t.dim, intro),
+        "",
+        ...componentLines({ installed: !!state, components, starship: info, latest, fonts, prefs }, row, t),
+      ], { width: width(), theme: t }),
+      "",
+      fontHint(t),
+      ...footer([
+        ["↑↓", "choose"],
+        ["Space", "on/off or change"],
+        ["⏎", "update Starship · pick a font"],
+        [
+          "X",
+          "remove Starship",
+        ],
+        ["Tab", "looks"],
+        ["Q", "quit"],
+      ]),
+    ];
+  };
 
   const ours = () => installedByUs().map((r) => r.id);
-  const fontsScreen = () => [
-    "Nerd Fonts give the status bar and prompt their icons.",
-    dim(
-      isWindows
-        ? "Installed for your user; Windows Terminal is switched to it when its settings allow."
-        : "Installed for your user; then choose it in your terminal's font settings.",
-    ),
-    "",
-    ...FONTS.map((f, i) => {
-      const status = fonts.includes(f.family)
-        ? green(ours().includes(f.id) ? "installed by this app" : "installed")
-        : dim("not installed");
-      const line = `${f.family.padEnd(28)} ${status}`;
-      return i === fontRow ? bold("  ▸ ") + line : `    ${line}`;
-    }),
-    "",
-    message || dim("↑/↓ choose   Enter install   X remove (fonts this app installed)   Esc back   Q quit"),
-  ];
+  const fontsScreen = () => {
+    const t = theme();
+    return [
+      ...box("Nerd Fonts", [
+        paint(t.text, "Nerd Fonts give the status bar and prompt their icons."),
+        paint(
+          t.dim,
+          isWindows
+            ? "Installed for your user; Windows Terminal is switched to it when its settings allow."
+            : "Installed for your user; then choose it in your terminal's font settings.",
+        ),
+        "",
+        ...FONTS.map((f, i) => {
+          const status = fonts.includes(f.family)
+            ? green(ours().includes(f.id) ? "installed by this app" : "installed")
+            : paint(t.dim, "not installed");
+          const line = `${f.family.padEnd(28)} ${status}`;
+          return i === fontRow ? `${ESC}[1m${paint(t.accent, "▸")} ${line}` : `  ${line}`;
+        }),
+      ], { width: width(), theme: t }),
+      ...footer([["↑↓", "choose"], ["⏎", "install"], ["X", "remove (fonts this app installed)"], [
+        "Esc",
+        "back",
+      ], [
+        "Q",
+        "quit",
+      ]]),
+    ];
+  };
 
   const draw = () => {
     const body = screen === "looks" ? looks() : screen === "components" ? componentsScreen() : fontsScreen();
-    write(`${ESC}[H${ESC}[2J${[...header(), ...body].join("\r\n")}`);
+    const top = header({ theme: theme(), screen, version: VERSION, width: width() });
+    write(`${ESC}[H${ESC}[2J${[...top, ...body].join("\r\n")}`);
   };
 
   const prompt = async (text: string) => {
@@ -471,6 +505,12 @@ export async function runUi(): Promise<number> {
     if (key === "explain") explain = !explain;
     if (key === "up") index = (index - 1 + presets.length) % presets.length;
     if (key === "down") index = (index + 1) % presets.length;
+    if (key === "left" || key === "right") {
+      // The grid fills column by column: a column to the side is a whole column of looks away.
+      const { columns, rows } = gridShape(presets.length, width() - 4);
+      const column = (Math.floor(index / rows) + (key === "right" ? 1 : columns - 1)) % columns;
+      index = Math.min(presets.length - 1, column * rows + (index % rows));
+    }
     if (key === "enter") {
       const p = presets[index];
       if (state) {

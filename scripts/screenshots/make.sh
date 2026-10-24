@@ -24,20 +24,24 @@ cd "$W/home/projects/my-app"
 "$B" install --no-starship-update >/dev/null
 anon() { sed "s/$REAL_USER/you/g"; }
 
-for p in rainbow gray nord-v1 tokyo-night synthwave ember; do "$B" preview $p | anon > "$W/preview-$p.ansi"; done
-head -3 "$W/preview-rainbow.ansi" > "$W/bar.ansi"; tail -1 "$W/preview-rainbow.ansi" > "$W/prompt.ansi"
+for p in fusain rainbow nord-v1 tokyo-night synthwave ember; do "$B" preview $p | anon > "$W/preview-$p.ansi"; done
+head -3 "$W/preview-fusain.ansi" > "$W/bar.ansi"; tail -1 "$W/preview-fusain.ansi" > "$W/prompt.ansi"
 deno run -A "$HERE/render.ts" "$W" "$PWD" >/dev/null
 
-# The real control panel in a pseudo-terminal: first frame with explanations, then Components.
-(sleep 4; printf 'e'; sleep 2; printf '\t'; sleep 2; printf 'q') |
+# The real control panel in a pseudo-terminal: Looks (explanations are on by default), then Components.
+(sleep 5; printf '\t'; sleep 2; printf 'q') |
   script -q "$W/tui.raw" sh -c "stty cols 112 rows 46; exec '$B'" >/dev/null 2>&1 || true
 python3 -I - "$W" <<'PY'
 import re, sys
 w = sys.argv[1]
-raw = open(f"{w}/tui.raw", "rb").read().decode("utf-8", "replace")
+raw = open(f"{w}/tui.raw", "rb").read().decode("utf-8", "replace").split("\x1b[?1049l")[0]  # until the panel exits
 frames = [re.sub(r"\x1b\[\?[0-9;]*[hl]", "", f).replace("\r\n", "\n") for f in raw.split("\x1b[H\x1b[2J") if f.strip()]
-looks = next(f for f in frames if "hide explanations" in f)
-comps = next(f for f in frames if "[ Components ]" in f)
+plain = lambda f: re.sub(r"\x1b\[[0-9;?]*[A-Za-z]", "", f)
+looks = next((f for f in frames if "hide explanations" in plain(f)), None)
+comps = next((f for f in frames if "╭─ Components" in plain(f)), None)
+if not (looks and comps):
+    sys.exit(f"panel capture: {len(frames)} frames, looks={bool(looks)} components={bool(comps)}; "
+             f"last frame ends: {plain(frames[-1])[-400:] if frames else raw[-400:]!r}")
 open(f"{w}/panel-looks.ansi", "w").write(looks); open(f"{w}/panel-components.ansi", "w").write(comps)
 PY
 for f in panel-looks panel-components; do anon < "$W/$f.ansi" > "$W/$f.clean.ansi"; done
@@ -49,7 +53,7 @@ snap hero "~/projects/my-app" "cap:Claude Code status bar" "file:$W/bar.ansi" "c
 snap warnings "Claude Code" "cap:Context at 92%, 5-hour limit at 74%" "file:$W/warn.ansi"
 snap narrow "Claude Code · narrow window" "file:$W/narrow.ansi"
 args=()
-for p in rainbow:Rainbow gray:Gray nord-v1:"Nord v1" tokyo-night:"Tokyo Night" synthwave:Synthwave ember:Ember; do
+for p in fusain:Fusain rainbow:Rainbow nord-v1:"Nord v1" tokyo-night:"Tokyo Night" synthwave:Synthwave ember:Ember; do
   id=${p%%:*}; { head -3 "$W/preview-$id.ansi"; echo; tail -1 "$W/preview-$id.ansi"; } > "$W/gap-$id.ansi"
   args+=("cap:${p#*:}" "file:$W/gap-$id.ansi")
 done
