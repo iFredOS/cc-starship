@@ -25,13 +25,14 @@ $python\
 $docker_context\
 $conda\
 $pixi\
+${custom.claude}\
 [](fg:color_bg3 bg:color_bg1)\
 $cmd_duration\
 $status\
 [ ](fg:color_bg1)\
 $line_break$character"""
 
-palette = 'rainbow'
+palette = 'gray'
 
 # Switch with ./theme rainbow|gray (also switches the Claude Code status bar).
 [palettes.rainbow]
@@ -214,3 +215,18 @@ vimcmd_symbol = '[](bold fg:color_green)'
 vimcmd_replace_one_symbol = '[](bold fg:color_purple)'
 vimcmd_replace_symbol = '[](bold fg:color_purple)'
 vimcmd_visual_symbol = '[](bold fg:color_yellow)'
+
+# Claude Code 5h/7d usage, saved by the status bar (statusline.mjs) on each
+# refresh. A window whose reset time has passed shows 0%.
+[custom.claude]
+when = '[ -r "${STATUSLINE_CACHE_DIR:-$HOME/.cache/starship-statusline}/usage" ]'
+shell = ["sh"]
+command = """
+f="${STATUSLINE_CACHE_DIR:-$HOME/.cache/starship-statusline}/usage"
+read r5 p5 r7 p7 < "$f"
+now=$(date +%s)
+[ "$r5" -gt 0 ] && [ "$now" -ge "$r5" ] && p5=0
+[ "$r7" -gt 0 ] && [ "$now" -ge "$r7" ] && p7=0
+printf '5h %s%% · 7d %s%%' "$p5" "$p7"
+"""
+format = '[ ✻ $output ](fg:color_fg0 bg:color_bg3)'

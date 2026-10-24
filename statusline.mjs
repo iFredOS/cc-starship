@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 // Claude Code statusLine command: maps the session JSON on stdin to CC_* env
-// vars and renders them with Starship using ./starship.toml. Segments and
+// vars and renders them with Starship using ./statusline.toml. Segments and
 // formats follow the cc-memento oh-my-posh bar, with Nerd Font icons.
 import { execFileSync } from "node:child_process";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
@@ -26,16 +26,20 @@ const AMBER = fg("fabd2f");
 const RED = fg("fb4934");
 const accent = (s) => `${ACCENT}${s}${TEXT}`;
 
+// Nerd Font icons, as escapes: raw glyphs are invisible and get lost in edits.
 const ICON = {
-  version: "",
-  account: "",
-  branch: "",
-  diff: "",
-  clock: "",
-  context: "",
-  fiveHour: "",
-  sevenDay: "",
-  warning: "",
+  version: "\uf02b",
+  account: "\uf007",
+  branch: "\ue725",
+  worktree: "\u{f0645}",
+  diff: "\uf440",
+  clock: "\uf017",
+  context: "\uf1c0",
+  warm: "\uf06d",
+  cold: "\uf2dc",
+  fiveHour: "\uf252",
+  sevenDay: "\uf073",
+  warning: "\uf071",
 };
 
 const EFFORT = {
@@ -104,33 +108,88 @@ function percent(value) {
   return color ? `${color}${p}%${TEXT}` : `${p}%`;
 }
 
-// "main ↑1 ↓2 *" from `git status`, "─" outside a repository.
-function gitBranch(dir) {
+// Branch name and its " ↑1 ↓2 *" marks from `git status`; "─" outside a repository.
+function gitStatus(dir) {
   const git = (...args) =>
     execFileSync("git", ["-C", dir, ...args], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"], timeout: 1500 });
   try {
     const [head = "", ...changes] = git("status", "--branch", "--porcelain", "--untracked-files=no").split("\n");
-    let branch = head.replace(/^## (No commits yet on )?/, "").split(/\.\.\.| /)[0];
-    if (branch === "HEAD") branch = git("rev-parse", "--short", "HEAD").trim();
+    let name = head.replace(/^## (No commits yet on )?/, "").split(/\.\.\.| /)[0];
+    if (name === "HEAD") name = git("rev-parse", "--short", "HEAD").trim();
     const ahead = head.match(/ahead (\d+)/);
     const behind = head.match(/behind (\d+)/);
-    return [
-      branch,
-      ahead && `↑${ahead[1]}`,
-      behind && `↓${behind[1]}`,
-      changes.some((l) => l.trim()) && "*",
-    ].filter(Boolean).join(" ");
+    const marks = [ahead && `↑${ahead[1]}`, behind && `↓${behind[1]}`, changes.some((l) => l.trim()) && "*"];
+    return { name, marks: marks.filter(Boolean).map((m) => ` ${m}`).join("") };
   } catch {
-    return "─";
+    return { name: "─", marks: "" };
   }
+}
+
+const truncate = (s, max) => (s.length > max ? `${s.slice(0, max - 1)}…` : s);
+
+// In a worktree, its name replaces the branch; the branch is added only when it
+// isn't the one Claude Code derived from the name ("worktree-<name>").
+function branchLabel(j, git, max) {
+  const worktree = j.worktree?.name || j.workspace?.git_worktree;
+  const branch = `${ICON.branch} ${truncate(git.name, max)}`;
+  if (!worktree) return `${branch}${git.marks}`;
+  const derived = git.name === "─" || [worktree, `worktree-${worktree}`, j.worktree?.branch].includes(git.name);
+  return `${ICON.worktree} ${truncate(worktree, max)}${derived ? "" : ` ${branch}`}${git.marks}`;
+}
+
+// Minutes until the prompt cache goes cold (amber from 5), or "cold" once it has.
+function cacheTimer(cache) {
+  if (!cache?.caching_observed) return null;
+  const left = cache.warm && cache.expires_at ? Math.floor((cache.expires_at * 1000 - Date.now()) / 60e3) : -1;
+  if (left < 0) return `${ICON.cold} ${AMBER}cold${TEXT}`;
+  const label = left < 1 ? "<1m" : `${left}m`;
+  return `${ICON.warm} ${left <= 5 ? `${AMBER}${label}${TEXT}` : label}`;
+}
+
+// The directory as Starship's directory module shows it, for width estimates.
+function directoryLabel(dir) {
+  const home = os.homedir();
+  const shown = dir === home || dir.startsWith(`${home}/`) ? `~${dir.slice(home.length)}` : dir;
+  const parts = shown.split("/").filter(Boolean);
+  return ` ${parts.length > 3 ? `…/${parts.slice(-3).join("/")}` : shown}`;
+}
+
+const visibleLength = (s) => [...s.replace(/\x1b\[[0-9;]*m/g, "")].length;
+
+// Start cap, then each segment with a space on both sides and its arrow or end cap.
+const lineWidth = (segments) => 1 + segments.reduce((w, s) => w + visibleLength(s) + 3, 0);
+
+// Applies `steps` (partial segment maps: a shorter text, or null to drop) in
+// order until the line fits in `budget` columns.
+function fit(segments, steps, budget) {
+  let current = segments;
+  for (const step of steps) {
+    if (lineWidth(Object.values(current).filter(Boolean)) <= budget) break;
+    current = { ...current, ...step };
+  }
+  return Object.values(current).filter(Boolean);
 }
 
 // Packs the visible segments into CC_L<line>_<slot> and marks the last slot.
 function slots(line, segments) {
-  const visible = segments.filter(Boolean);
-  const vars = Object.fromEntries(visible.map((s, i) => [`CC_L${line}_${i + 1}`, s]));
-  vars[`CC_L${line}_END${visible.length}`] = "1";
+  const vars = Object.fromEntries(segments.map((s, i) => [`CC_L${line}_${i + 1}`, s]));
+  vars[`CC_L${line}_END${segments.length}`] = "1";
   return vars;
+}
+
+// Saves 5h/7d usage for the shell prompt: "<5h reset> <5h %> <7d reset> <7d %>".
+function saveUsage(fiveHour, sevenDay) {
+  if (fiveHour?.used_percentage == null || sevenDay?.used_percentage == null) return;
+  const dir = process.env.STATUSLINE_CACHE_DIR || path.join(os.homedir(), ".cache", "starship-statusline");
+  const line = [fiveHour, sevenDay].map((w) => `${w.resets_at ?? 0} ${Math.round(w.used_percentage)}`).join(" ");
+  try {
+    mkdirSync(dir, { recursive: true });
+    const tmp = path.join(dir, `usage.${process.pid}`);
+    writeFileSync(tmp, `${line}\n`);
+    renameSync(tmp, path.join(dir, "usage"));
+  } catch {
+    // The shell prompt just keeps the previous numbers.
+  }
 }
 
 function buildEnv(j) {
@@ -142,26 +201,45 @@ function buildEnv(j) {
   const email = accountEmail();
   const fiveHour = limits.five_hour;
   const sevenDay = limits.seven_day;
-  const duration = cost.total_duration_ms > 0 ? ` · ${ICON.clock} ${formatDuration(cost.total_duration_ms)}` : "";
+  const git = gitStatus(dir);
+  // Claude Code sets COLUMNS; keep a margin for the bar's own indent.
+  const budget = (Number(process.env.COLUMNS) || Infinity) - 2;
+  saveUsage(fiveHour, sevenDay);
+
+  const diff = `${ICON.diff} +${cost.total_lines_added ?? 0}/−${cost.total_lines_removed ?? 0}`;
+  const fiveHourUsage = fiveHour?.used_percentage != null &&
+    `${ICON.fiveHour} 5h ${fiveHour.used_percentage >= 100 ? `${ICON.warning} Extra` : percent(fiveHour.used_percentage)}`;
+  const sevenDayUsage = sevenDay?.used_percentage != null && `${ICON.sevenDay} 7d ${percent(sevenDay.used_percentage)}`;
+
+  // Each line lists its segments, then what to shorten or drop first when narrow.
+  const line1 = fit({
+    model: `${accent("✻")} ${cleanModelName(j.model?.display_name, j.model?.id)}`,
+    effort: effort ? `${accent(effort.icon)} ${effort.label}` : j.effort?.level,
+    version: j.version && `${ICON.version} v${j.version}`,
+    account: email && `${ICON.account} ${email}`,
+  }, [{ account: null }, { version: null }, { effort: null }], budget);
+
+  const line2 = fit({
+    directory: directoryLabel(dir),
+    branch: branchLabel(j, git, 24),
+    diff: cost.total_duration_ms > 0 ? `${diff} · ${ICON.clock} ${formatDuration(cost.total_duration_ms)}` : diff,
+  }, [{ diff }, { branch: branchLabel(j, git, 12) }, { diff: null }], budget).slice(1);
+
+  const line3 = fit({
+    context: `${ICON.context} CTX ${percent(ctx.used_percentage)} / ${formatTokens(ctx.total_input_tokens ?? 0)} ($${(cost.total_cost_usd ?? 0).toFixed(2)})`,
+    cache: cacheTimer(j.prompt_cache),
+    fiveHour: fiveHourUsage && fiveHourUsage + formatReset(fiveHour.resets_at),
+    sevenDay: sevenDayUsage && sevenDayUsage + formatReset(sevenDay.resets_at),
+  }, [{ sevenDay: sevenDayUsage }, { fiveHour: fiveHourUsage }, { sevenDay: null }, { cache: null }, { fiveHour: null }], budget);
 
   return {
     dir,
     vars: {
-      ...slots(1, [
-        `${accent("✻")} ${cleanModelName(j.model?.display_name, j.model?.id)}`,
-        effort ? `${accent(effort.icon)} ${effort.label}` : j.effort?.level,
-        j.version && `${ICON.version} v${j.version}`,
-        email && `${ICON.account} ${email}`,
-      ]),
-      CC_L2_2: `${ICON.branch} ${gitBranch(dir)}`,
-      CC_L2_3: `${ICON.diff} +${cost.total_lines_added ?? 0}/−${cost.total_lines_removed ?? 0}${duration}`,
-      ...slots(3, [
-        `${ICON.context} CTX ${percent(ctx.used_percentage)} / ${formatTokens(ctx.total_input_tokens ?? 0)} ($${(cost.total_cost_usd ?? 0).toFixed(2)})`,
-        fiveHour?.used_percentage != null &&
-          `${ICON.fiveHour} 5h ${fiveHour.used_percentage >= 100 ? `${ICON.warning} Extra` : percent(fiveHour.used_percentage)}${formatReset(fiveHour.resets_at)}`,
-        sevenDay?.used_percentage != null &&
-          `${ICON.sevenDay} 7d ${percent(sevenDay.used_percentage)}${formatReset(sevenDay.resets_at)}`,
-      ]),
+      ...slots(1, line1),
+      // Line 2's first slot is Starship's own directory module.
+      ...Object.fromEntries(line2.map((s, i) => [`CC_L2_${i + 2}`, s])),
+      [`CC_L2_END${line2.length + 1}`]: "1",
+      ...slots(3, line3),
     },
   };
 }

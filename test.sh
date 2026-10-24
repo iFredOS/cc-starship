@@ -8,6 +8,10 @@ trap 'rm -rf $tmp' EXIT
 # Account email comes from $CLAUDE_CONFIG_DIR/.claude.json; use a fixture.
 print -r -- '{"oauthAccount":{"emailAddress":"you@example.com"}}' > $tmp/.claude.json
 export CLAUDE_CONFIG_DIR=$tmp
+# Usage numbers shared with the shell prompt go here instead of ~/.cache.
+export STATUSLINE_CACHE_DIR=$tmp/cache
+export LC_ALL=en_US.UTF-8
+unset COLUMNS
 
 raw()   { deno run -A "${proj:-$dir}/statusline.mjs" }
 plain() { raw | perl -pe 's/\e\[[0-9;]*m//g' }
@@ -69,6 +73,44 @@ print hi > $repo/f; git -C $repo add f; git -C $repo -c user.name=t -c user.emai
 print bye > $repo/f
 out=$(payload "" $repo | plain)
 expect $' main *' git
+
+# Prompt cache: minutes left while warm (amber from 5 min), "cold" once expired.
+cache() { payload ",\"prompt_cache\":{\"caching_observed\":true,$1}" | ${2:-plain} }
+out=$(cache "\"warm\":true,\"expires_at\":$(( EPOCHSECONDS + 42 * 60 + 10 ))"); expect $' 42m' cache-warm
+out=$(cache "\"warm\":true,\"expires_at\":$(( EPOCHSECONDS + 4 * 60 + 10 ))" raw); expect $'\e[38;2;250;189;47m4m' cache-soon
+out=$(cache '"warm":false,"expires_at":null' raw); expect $' \e[38;2;250;189;47mcold' cache-cold
+out=$(payload | plain); reject $'' cache-absent; reject $'' cache-absent
+out=$(payload ',"prompt_cache":{"caching_observed":false,"warm":false}' | plain); reject $'' cache-off
+
+# Worktrees: show the worktree name, not Claude Code's "worktree-<name>" branch.
+wt='"git_worktree":"feature-xyz"},"worktree":{"name":"feature-xyz","branch":"worktree-feature-xyz"'
+out=$(print -r -- "{\"model\":{\"display_name\":\"Opus 5.5\"},\"workspace\":{\"current_dir\":\"/tmp\",$wt}}" | plain)
+expect $'\U000f0645 feature-xyz' worktree; reject "worktree-feature-xyz" worktree
+long=add-a-very-long-worktree-name-for-testing
+out=$(print -r -- "{\"model\":{\"display_name\":\"Opus 5.5\"},\"workspace\":{\"current_dir\":\"/tmp\",\"git_worktree\":\"$long\"}}" | plain)
+expect "…" worktree-long; reject "$long" worktree-long
+
+# Narrow terminals: every line fits in $COLUMNS; the essentials stay.
+fits() {
+  local w=$1 line
+  out=$(COLUMNS=$w plain < $dir/fixture.json)
+  for line in "${(@f)out}"; do
+    (( ${#line} <= w )) || { print -r -- "FAIL (width $w): ${#line} cols: $line"; fail=1 }
+  done
+}
+fits 60; expect "✻ Opus 5.5" narrow; expect "CTX 8%" narrow
+fits 45; expect "✻ Opus 5.5" narrower; expect "CTX 8%" narrower; reject "you@example.com" narrower
+out=$(COLUMNS=200 plain < $dir/fixture.json); expect "you@example.com" wide
+
+# The bar saves 5h/7d usage for the shell prompt, which shows it and zeroes a
+# window once its reset time has passed.
+shell_usage() { STARSHIP_CONFIG=$dir/shell.toml STARSHIP_SHELL= starship prompt | perl -pe 's/\e\[[0-9;]*m//g' }
+rm -rf $STATUSLINE_CACHE_DIR
+out=$(shell_usage); reject "5h" shell-no-usage; reject "✻" shell-no-usage
+payload ",\"rate_limits\":{\"five_hour\":{\"used_percentage\":42,\"resets_at\":$(( EPOCHSECONDS + 3600 ))},\"seven_day\":{\"used_percentage\":23,\"resets_at\":$(( EPOCHSECONDS + 86400 ))}}" | plain >/dev/null
+out=$(shell_usage); expect "✻ 5h 42% · 7d 23%" shell-usage
+payload ",\"rate_limits\":{\"five_hour\":{\"used_percentage\":42,\"resets_at\":$(( EPOCHSECONDS - 60 ))},\"seven_day\":{\"used_percentage\":23,\"resets_at\":$(( EPOCHSECONDS + 86400 ))}}" | plain >/dev/null
+out=$(shell_usage); expect "✻ 5h 0% · 7d 23%" shell-usage-reset
 
 # Theme switch, on a throwaway copy of the project so the real files stay put.
 proj=$tmp/proj
