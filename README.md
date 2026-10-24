@@ -1,105 +1,229 @@
 # cc-starship
 
-A Claude Code status bar and a matching shell prompt, both rendered by
-[Starship](https://starship.rs), with 15 color presets. One self-contained
-program installs, switches and uninstalls everything, on macOS and Windows.
+**A colorful, informative status bar for Claude Code, and a matching prompt for your terminal.**
+Both are drawn by [Starship](https://starship.rs). One small program installs everything,
+switches looks, and uninstalls cleanly, on macOS and Windows.
 
-## Use
+![The Claude Code status bar and the shell prompt, Rainbow look](docs/images/hero.png)
 
-Run the program for your system from `dist/` (see Build) with no arguments. It
-opens a control panel with two screens; Tab switches between them.
+- **See what matters while you work:** model, effort, branch, lines changed, how much of the
+  context window is used, and your 5-hour and 7-day limits with their reset times.
+- **The same look in your terminal**, with your Claude usage right in the prompt.
+- **15 looks**, previewed live before you pick one.
+- **Turnkey:** installs or updates Starship and a Nerd Font for you. Nothing to configure by hand.
+- **Undo is real:** uninstall puts back every file it touched, byte for byte.
 
-**Looks**
-- ↑/↓ choose one of 15 looks, with a live preview of the status bar and the
-  shell prompt, each explained part by part (E hides the explanations)
-- Enter installs with that look, or switches to it once installed
-- U uninstalls and puts back everything the installer changed
+---
 
-**Components**
-- Space switches a part on or off: the Claude Code status bar, the shell
-  prompt, the Claude usage segment in the prompt. Before installing, this
-  chooses what gets installed; afterwards it applies right away, and a part
-  switched off is restored exactly
-- Add-ons, each a switch of its own:
-  - **Usage for Claude**: a Claude Code hook hands Claude the bar's numbers
-    (context, 5h, 7d, reset times and time left) so it can pace itself. It
-    costs about 70 tokens on each prompt it speaks up on, which the panel says
-    before it's switched on. "Send usage to Claude" sets when it starts:
-    every prompt, or once context, 5h or 7d reaches 50, 70 or 90% (default 50;
-    below it, nothing is sent and nothing is spent)
-  - **Shell memory**: a new tab that starts in your home folder opens in the
-    last folder you cd'd into; history keeps one copy of each command, the
-    newest. zsh and PowerShell; shells run by agents or by one-off commands
-    (`ssh host cmd`, `pwsh -Command`) are left alone
-  - **Terminal settings**: JetBrainsMono Nerd Font 15 and Option as Alt in
-    cmux and Ghostty; the same font as Windows Terminal's default
-- oh-my-posh still starting in a profile, or drawing the status line, gets a
-  note at install and in `status`: it conflicts with Starship, which draws the
-  same kind of prompt about 3× faster
-- Starship shows its version and whether a newer one exists; Enter updates it
-  (through brew, winget or Scoop when they installed it, otherwise by
-  downloading the release), X removes it
-- Nerd Font shows which are installed; Enter opens a list of five to install
-  for your user (on Windows, Windows Terminal is switched to it when its
-  settings file allows), X removes one this app installed
+## Contents
 
-Q or Esc quits without changing anything. Run it from the terminal you normally
+- [Install](#install)
+- [The control panel](#the-control-panel)
+- [Looks](#looks)
+- [Reading the status bar](#reading-the-status-bar)
+- [Add-ons](#add-ons)
+- [Command line](#command-line)
+- [What it changes, and how uninstall works](#what-it-changes-and-how-uninstall-works)
+- [Speed](#speed)
+- [Troubleshooting](#troubleshooting)
+- [Development](#development)
+
+## Install
+
+1. **Get the program for your computer** from the [Releases](../../releases) page (or build it,
+   see [Development](#development)):
+
+   | Computer | File |
+   |---|---|
+   | Mac with Apple silicon (M1 and later) | `cc-starship-aarch64-apple-darwin` |
+   | Mac with Intel | `cc-starship-x86_64-apple-darwin` |
+   | Windows (64-bit) | `cc-starship-x86_64-pc-windows-msvc.exe` |
+
+2. **Run it from your terminal**, with no arguments.
+
+   **macOS** (Terminal, iTerm, Ghostty or cmux):
+
+   ```sh
+   cd ~/Downloads
+   chmod +x cc-starship-aarch64-apple-darwin
+   xattr -d com.apple.quarantine cc-starship-aarch64-apple-darwin   # downloaded files are blocked until you allow them
+   ./cc-starship-aarch64-apple-darwin
+   ```
+
+   **Windows** (Windows Terminal or PowerShell): run
+   `.\cc-starship-x86_64-pc-windows-msvc.exe` from your Downloads folder. If SmartScreen
+   warns you, choose *More info → Run anyway*.
+
+3. **Pick a look with the arrow keys and press Enter.** The program installs itself, Starship
+   and your chosen look.
+4. **Open a new terminal tab and restart Claude Code.** That's it.
+
+To change the look later, run `~/.local/share/cc-starship/bin/cc-starship`
+(on Windows, `%LOCALAPPDATA%\cc-starship\bin\cc-starship.exe`) again.
+
+## The control panel
+
+Run with no arguments, the program opens a keyboard control panel. **Tab** switches between
+its two screens.
+
+**Looks**: ↑/↓ to browse, with a live preview of both the status bar and the prompt, each
+explained part by part (**E** hides the explanations). **Enter** installs with that look, or
+switches to it. **U** uninstalls.
+
+![The Looks screen with the preview and explanations](docs/images/panel-looks.png)
+
+**Components**: **Space** switches each part on or off, and changes apply right away. Before
+installing, it chooses what gets installed. Here you also update or remove Starship, install a
+Nerd Font, and choose the language (English or Québécois French) and clock (24 h or 12 h) for
+reset times.
+
+![The Components screen with every part and add-on](docs/images/panel-components.png)
+
+**Q** or **Esc** quits without changing anything. Run the panel from the terminal you normally
 use: the preview shows exactly what that terminal and its font will draw.
 
-The same actions as commands, for scripts or remote machines:
+## Looks
+
+Fifteen looks, chosen for contrast and for colors that stay distinct from each other. Six of them:
+
+![Six looks: Rainbow, Gray, Nord, Tokyo Night, Synthwave, Ember](docs/images/presets.png)
+
+All fifteen: Rainbow, Sunset, Autumn, Ocean, Jewel, Mocha, Nord, Berry, Tidepool, Synthwave,
+Gray, Neon, Ice, Ember, Tokyo Night. The status bar and the prompt always change together.
+
+## Reading the status bar
+
+| Line | Shows |
+|---|---|
+| 1 | model · effort level · Claude Code version · signed-in account |
+| 2 | folder · branch or worktree (↑ ahead, ↓ behind, `*` uncommitted) · lines added/removed · session time |
+| 3 | context used, tokens and cost · 5-hour limit · 7-day limit, each with its reset time |
+
+Reset times read naturally: today shows the time (`2:38 AM`), another day this week its weekday
+(`Tue 1:08 AM`), later the date (`Oct 30 6 PM`). In French: `mar. 1 h 08`, `30 oct. 18 h`.
+
+**Warnings stand out:** a percentage becomes an amber chip at 70% and a red ▲ chip at 90%.
+
+![Red chip for context at 92%, amber chip for the 5-hour limit at 74%](docs/images/warnings.png)
+
+**Narrow windows** keep the essentials: each line drops its least useful parts first.
+
+![The status bar fitted to a narrow window](docs/images/narrow.png)
+
+The shell prompt shows your 5-hour and 7-day usage too (`✻ 5h 42% · 7d 23%`), saved by the
+status bar each time it refreshes.
+
+## Add-ons
+
+Each is a switch on the Components screen, on by default.
+
+**Usage for Claude.** Lets Claude itself see your context, 5-hour and 7-day numbers (with reset
+times and time left), so it can pace long work without you relaying them. It is a Claude Code
+`UserPromptSubmit` hook. **It costs about 70 tokens on each prompt it speaks up on**, and the
+panel says so before you switch it on. *Send usage to Claude* sets when it starts: every prompt,
+or only once context, 5h or 7d reaches 50, 70 or 90% (the default is 50%). Below that it sends
+nothing and costs nothing. Restart Claude Code after switching it on.
+
+**Shell memory.** A new tab that opens in your home folder goes back to the last folder you
+`cd`'d into, and your history keeps one copy of each command (the newest). Works in zsh and
+PowerShell. Tabs that start somewhere specific (restored windows, "Open in Terminal") stay
+where they are. Shells run by agents or one-off commands (`ssh host cmd`, `pwsh -Command`) are
+left alone. On Windows it uses the Starship prompt.
+
+**Terminal settings.** The same font and keys everywhere: JetBrainsMono Nerd Font, size 15,
+and Option working as Alt in cmux and Ghostty. In Windows Terminal it becomes the default font
+for every profile. The font is installed if missing.
+
+**oh-my-posh.** If it still starts in a profile or draws your status line, install and `status`
+say so: two prompt engines conflict, and Starship draws the same kind of prompt about 3× faster.
+
+## Command line
+
+Everything the panel does, for scripts or remote machines:
 
 ```sh
 cc-starship install [--preset NAME] [--no-starship-update] [--no-hook]
-cc-starship theme [NAME]                    # switch, or show the current preset
+cc-starship theme [NAME]                    # switch look, or show the current one
 cc-starship components [bar|shell|usage|hook|memory|terminal] [on|off]
 cc-starship prefs [language auto|en|fr-CA] [clock auto|24h|12h] [hook-from 0|50|70|90]
-cc-starship status                          # parts, Starship, Nerd Fonts
+cc-starship status                          # parts, Starship, Nerd Fonts, notes
 cc-starship font list | install ID | remove ID
 cc-starship starship update | remove
 cc-starship presets | preview [NAME]
 cc-starship uninstall
 ```
 
-## What install changes
+`--no-starship-update` keeps the install fully offline when Starship is already there.
+
+## What it changes, and how uninstall works
+
+Before touching a file, install records what was there: the file itself, a link, or nothing.
+Uninstall, or switching a part off, uses that record.
 
 | What | Where | Uninstall |
 |---|---|---|
 | the program, generated configs, backups | `~/.local/share/cc-starship` (Windows: `%LOCALAPPDATA%\cc-starship`) | removed |
-| shell prompt config | `~/.config/starship.toml` | the previous file (or link) put back byte for byte |
-| Claude Code `statusLine` | `~/.claude/settings.json` | put back; other settings you changed since are kept |
+| shell prompt config | `~/.config/starship.toml` | your previous file or link, byte for byte |
+| Claude Code `statusLine` and usage hook | `~/.claude/settings.json` | only these taken out; anything else you changed since is kept, your own hooks are never touched |
 | Starship start-up line, only if missing | `~/.zshrc`, or each PowerShell `$PROFILE` | the added block removed |
-| usage hook (`UserPromptSubmit`) | `~/.claude/settings.json` | removed; your own hooks are never touched |
-| shell memory block | `~/.zshrc`, or each PowerShell `$PROFILE` | the added block removed |
-| terminal font and keys | cmux `config.ghostty`, `~/.config/ghostty/config`; Windows Terminal `settings.json` | the added block removed; Windows Terminal's fonts put back |
-| Starship itself, if missing or outdated | updated by brew / winget / Scoop when they installed it, otherwise the latest release is downloaded and checksum-verified | |
+| shell memory | the same profiles, in a block of its own | the block removed |
+| terminal font and keys | cmux `config.ghostty`, `~/.config/ghostty/config`; Windows Terminal `settings.json` | the block removed; Windows Terminal's face and size put back |
+| Starship itself, if missing or outdated | updated through brew, winget or Scoop when they installed it; otherwise the latest release is downloaded and its checksum verified | left installed (`cc-starship starship remove` removes it) |
 
-## What the status bar shows
+Settings files with comments are never rewritten: the program stops and says so instead.
 
-| Line | Segments |
-|---|---|
-| 1 | model, effort, Claude Code version, account |
-| 2 | folder, branch or worktree (↑ ahead ↓ behind * uncommitted), lines changed, session time |
-| 3 | context used and cost, 5-hour and 7-day limits with reset times (today: the time; another day: its weekday; a week or more: the date) |
+## Speed
 
-A percentage becomes an amber chip at 70% and a red ▲ chip at 90%. On narrow
-terminals each line drops its least useful parts until it fits. The shell
-prompt shows the same 5h/7d usage, saved by the status bar on each refresh.
+Measured on real machines. The status bar runs every time Claude Code refreshes, and the prompt
+parts run on every command.
 
-## Presets
+| | M1 Pro Mac | M5 Ultra Mac | Windows 11 PC |
+|---|---|---|---|
+| status bar render | 59 ms | 34 ms | 147 ms |
+| usage in the prompt | 28 ms | 20 ms | 65 ms |
+| usage for Claude (per message you send) | 39 ms | 27 ms | 85 ms |
+| shell memory at tab start | no measurable cost | +6 ms | no measurable cost |
 
-`presets/presets.json`, generated by `scripts/import_ps1_themes.py` from the
-built-in rainbow and gray plus the 38 themes of an earlier PowerShell status
-bar, of which a design review kept 13 (with contrast fixes). `scripts/preset_metrics.py`
-prints contrast and separation numbers for each.
+For comparison, the oh-my-posh status bar this replaced took about 94 ms on the M5 Ultra Mac.
 
-## Build and test
+## Troubleshooting
+
+- **Boxes or `?` instead of icons:** your terminal's font isn't a Nerd Font. Install one from
+  Components → Nerd Font, then choose it in your terminal's settings (or switch on
+  *Terminal settings*). macOS Terminal.app's default font has no icons.
+- **Nothing changed in Claude Code:** restart it. The status bar updates within a minute, but
+  hooks are read only when Claude Code starts.
+- **Windows Terminal still shows the old font:** close and reopen it after a new font is installed.
+- **"settings.json has comments or trailing commas":** remove them and run install again. Claude
+  Code accepts them, but the file can't be safely rewritten with them.
+- **An install from the old name (starship-statusline) is found:** the message gives the exact
+  command to remove it first. Run that, then install again.
+
+## Development
+
+Written in TypeScript for [Deno](https://deno.com). `deno compile` turns it into one
+self-contained program per platform.
 
 ```sh
-deno task test     # unit tests, install/uninstall round trips in a scratch home
+deno task test     # 93 tests, including install/uninstall round trips in a scratch home
 deno task build    # dist/: macOS arm64 and x64, Windows x64
-python3 bench.py   # this bar vs the oh-my-posh one (needs a build)
+python3 bench.py   # this status bar vs the oh-my-posh one (needs a build)
+scripts/screenshots/make.sh   # regenerates docs/images from the real program (macOS)
 ```
 
-Templates live in `templates/`, presets in `presets/`; `deno task gen` embeds
-both into `src/assets.gen.ts`. Nerd Font glyphs in the sources are written as
-`\u{...}` escapes: raw glyphs are invisible in most editors and get lost.
+| Path | Holds |
+|---|---|
+| `src/main.ts` | the command line |
+| `src/tui.ts` | the control panel |
+| `src/engine.ts` | install, switch and uninstall, with the manifest of prior state |
+| `src/statusline.ts` | the status bar: Claude Code's JSON → Starship |
+| `src/hook.ts` · `src/memory.ts` · `src/terminal.ts` | the add-ons |
+| `src/starship.ts` · `src/fonts.ts` | Starship and Nerd Font install, update and removal |
+| `templates/` · `presets/` | Starship templates and the 15 looks; `deno task gen` embeds them |
+
+Looks come from `scripts/import_ps1_themes.py`. `scripts/preset_metrics.py` prints contrast and
+separation numbers for each. Nerd Font glyphs in the sources are written as `\u{...}` escapes,
+because raw glyphs are invisible in most editors and easily lost.
+
+The screenshots run the real program in a throwaway demo home (sample project, `you@example.com`,
+offline), render its output to HTML and snapshot it with WebKit.
