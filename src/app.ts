@@ -35,6 +35,11 @@ export async function runUninstall(log: (line: string) => void): Promise<number>
 export async function ensureStarship(update: boolean, log: (line: string) => void): Promise<string> {
   let info = findStarship();
   let latest: string | null = null;
+  // Without updates and with Starship present, stay offline: no GitHub check at all.
+  if (!update && info) {
+    log(`Starship ${info.version ?? "?"}: ${info.path}`);
+    return info.path;
+  }
   try {
     latest = await latestVersion();
   } catch {
