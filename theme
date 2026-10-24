@@ -1,0 +1,25 @@
+#!/bin/zsh
+# Switch the shell prompt and the Claude Code status bar together.
+#   theme            print the current theme
+#   theme <name>     switch to gray or rainbow
+# The theme is the `palette = '<name>'` line in shell.toml and statusline.toml.
+# ~/.config/starship.toml is a symlink to shell.toml, so new shells pick it up;
+# Claude Code picks it up on the next status bar refresh.
+dir=${0:A:h}
+files=($dir/shell.toml $dir/statusline.toml)
+themes=(gray rainbow)
+
+if (( $# == 0 )); then
+  sed -n "s/^palette = '\(.*\)'$/\1/p" $dir/statusline.toml
+  exit
+fi
+
+if (( ! ${themes[(Ie)$1]} )); then
+  print -u2 "unknown theme '$1' (choose: ${(j:, :)themes})"
+  exit 1
+fi
+
+for f in $files; do
+  sed -i '' "s/^palette = '.*'$/palette = '$1'/" $f
+done
+print "theme: $1 (open a new shell tab to see the prompt)"

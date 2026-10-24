@@ -1,0 +1,108 @@
+"$schema" = 'https://starship.rs/config-schema.json'
+
+# Claude Code status bar rendered by Starship, laid out like the oh-my-posh one.
+# statusline.mjs packs the visible segments of each line into numbered slots
+# (CC_L<line>_<slot>) and sets one CC_L<line>_END<n> for the last slot used, so
+# the rounded end cap always takes that slot's color.
+# Glyphs are written as \u escapes: U+E0B6 start cap, U+E0B0 arrow, U+E0B4 end
+# cap, U+F07B folder. Keep them escaped; raw Nerd Font glyphs get lost in edits.
+add_newline = false
+palette = 'rainbow'
+
+format = """
+[](fg:l1_1)\
+${env_var.CC_L1_1}${env_var.CC_L1_2}${env_var.CC_L1_3}${env_var.CC_L1_4}\
+${env_var.CC_L1_END1}${env_var.CC_L1_END2}${env_var.CC_L1_END3}${env_var.CC_L1_END4}\
+$line_break\
+[](fg:l2_1)$directory${env_var.CC_L2_2}${env_var.CC_L2_3}\
+$line_break\
+[](fg:l3_1)\
+${env_var.CC_L3_1}${env_var.CC_L3_2}${env_var.CC_L3_3}\
+${env_var.CC_L3_END1}${env_var.CC_L3_END2}${env_var.CC_L3_END3}"""
+
+# Switch with ./theme rainbow|gray (also switches the shell prompt).
+# Gruvbox grays and cream text, the oh-my-posh statusline theme's colors.
+[palettes.gray]
+text = '#ebdbb2'
+l1_1 = '#282828'
+l1_2 = '#3d3937'
+l1_3 = '#514b45'
+l1_4 = '#665c54'
+l2_1 = '#282828'
+l2_2 = '#47423e'
+l2_3 = '#665c54'
+l3_1 = '#3c3836'
+l3_2 = '#504945'
+l3_3 = '#665c54'
+
+# Starship's gruvbox-rainbow preset colors, in the shell prompt's order. Line 3
+# stays gray, like the prompt's tail, so amber and red warnings stay readable.
+[palettes.rainbow]
+text = '#fbf1c7'
+l1_1 = '#d65d0e'
+l1_2 = '#d79921'
+l1_3 = '#689d6a'
+l1_4 = '#458588'
+l2_1 = '#d79921'
+l2_2 = '#689d6a'
+l2_3 = '#458588'
+l3_1 = '#665c54'
+l3_2 = '#504945'
+l3_3 = '#3c3836'
+
+# Line 1: model, effort, version, account
+[env_var.CC_L1_1]
+format = "[ $env_value ](fg:text bg:l1_1)"
+
+[env_var.CC_L1_2]
+format = "[](fg:l1_1 bg:l1_2)[ $env_value ](fg:text bg:l1_2)"
+
+[env_var.CC_L1_3]
+format = "[](fg:l1_2 bg:l1_3)[ $env_value ](fg:text bg:l1_3)"
+
+[env_var.CC_L1_4]
+format = "[](fg:l1_3 bg:l1_4)[ $env_value ](fg:text bg:l1_4)"
+
+[env_var.CC_L1_END1]
+format = "[](fg:l1_1)"
+
+[env_var.CC_L1_END2]
+format = "[](fg:l1_2)"
+
+[env_var.CC_L1_END3]
+format = "[](fg:l1_3)"
+
+[env_var.CC_L1_END4]
+format = "[](fg:l1_4)"
+
+# Line 2: directory, git branch, lines changed and session time (always shown)
+[directory]
+format = "[  $path ](fg:text bg:l2_1)[$read_only](fg:text bg:l2_1)"
+truncation_length = 3
+truncate_to_repo = false
+truncation_symbol = '…/'
+
+[env_var.CC_L2_2]
+format = "[](fg:l2_1 bg:l2_2)[ $env_value ](fg:text bg:l2_2)"
+
+[env_var.CC_L2_3]
+format = "[](fg:l2_2 bg:l2_3)[ $env_value ](fg:text bg:l2_3)[](fg:l2_3)"
+
+# Line 3: context, 5h and 7d rate limits
+[env_var.CC_L3_1]
+format = "[ $env_value ](fg:text bg:l3_1)"
+
+[env_var.CC_L3_2]
+format = "[](fg:l3_1 bg:l3_2)[ $env_value ](fg:text bg:l3_2)"
+
+[env_var.CC_L3_3]
+format = "[](fg:l3_2 bg:l3_3)[ $env_value ](fg:text bg:l3_3)"
+
+[env_var.CC_L3_END1]
+format = "[](fg:l3_1)"
+
+[env_var.CC_L3_END2]
+format = "[](fg:l3_2)"
+
+[env_var.CC_L3_END3]
+format = "[](fg:l3_3)"
