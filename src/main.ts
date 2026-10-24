@@ -1,6 +1,6 @@
 // starship-statusline: installer, uninstaller and runtime for a Starship-rendered
 // Claude Code status bar and matching shell prompt.
-import { doInstall, ensureStarship, previewLines, runUninstall, VERSION } from "./app.ts";
+import { claudeStatusLine, doInstall, ensureStarship, previewLines, runUninstall, VERSION } from "./app.ts";
 import {
   ALL_COMPONENTS,
   type Components,
@@ -8,6 +8,7 @@ import {
   setComponents,
   setPrefs,
   setTheme,
+  shellProfiles,
 } from "./engine.ts";
 import {
   detectNerdFonts,
@@ -19,6 +20,7 @@ import {
   windowsTerminalSettings,
 } from "./fonts.ts";
 import { HOOK_COST, hookOutput, pruneSnapshots, snapshotFile } from "./hook.ts";
+import { ompNotes } from "./omp.ts";
 import { paths, readState } from "./paths.ts";
 import { allPresets, DEFAULT_PRESET, findPreset } from "./presets.ts";
 import { findStarship, latestVersion, runUpdate, uninstallPlan, updatePlan } from "./starship.ts";
@@ -68,6 +70,7 @@ async function status(): Promise<number> {
     `starship:   ${info ? `${info.version} via ${info.managedBy}, ${info.path}${update}` : "not found"}`,
   );
   console.log(`nerd fonts: ${fontFamilies(detectNerdFonts()).join(", ") || "none found"}`);
+  for (const note of ompNotes(shellProfiles(), claudeStatusLine())) console.log(`note:       ${note}`);
   const wt = windowsTerminalSettings();
   if (wt) {
     let plain = true;

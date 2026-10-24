@@ -88,6 +88,14 @@ Deno.test("PowerShell block: remembers through Starship's pre-command hook and d
   ) assertStringIncludes(block, part);
   assert(!/function\s+(global:)?Set-Location/i.test(block), "doesn't override cd");
   const lines = block.trimEnd().split("\n");
-  assertEquals([lines[1], lines.at(-1)], ["& {", "}"], "runs in its own scope: no variables leak into the session");
-  assertStringIncludes(block, "$env:WINDIR", "a start in C:\\Windows (Run, some launchers) counts as no choice");
+  assertEquals(
+    [lines[1], lines.at(-1)],
+    ["& {", "}"],
+    "runs in its own scope: no variables leak into the session",
+  );
+  assertStringIncludes(
+    block,
+    "$env:WINDIR",
+    "a start in C:\\Windows (Run, some launchers) counts as no choice",
+  );
 });

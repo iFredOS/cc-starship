@@ -1,6 +1,7 @@
 // Steps shared by the command line and the keyboard picker.
 import { basename, join } from "node:path";
-import { type Components, install, runningFromInstallDir, uninstall } from "./engine.ts";
+import { type Components, install, runningFromInstallDir, shellProfiles, uninstall } from "./engine.ts";
+import { ompNotes } from "./omp.ts";
 import { detectNerdFonts, FONTS, installFont } from "./fonts.ts";
 import { isWindows, paths, readState } from "./paths.ts";
 import { TERMINAL_FONT } from "./terminal.ts";
@@ -11,6 +12,15 @@ import type { Clock, Language, Prefs } from "./when.ts";
 
 export const VERSION = "0.1.0";
 const compiled = basename(Deno.execPath()).startsWith("starship-statusline");
+
+/** Claude Code's current statusLine setting, if readable. */
+export function claudeStatusLine(): { command?: string } | undefined {
+  try {
+    return JSON.parse(Deno.readTextFileSync(paths.claudeSettings()).replace(/^\uFEFF/, "")).statusLine;
+  } catch {
+    return undefined;
+  }
+}
 
 /** Uninstalls, reporting each step; returns an exit code. */
 export async function runUninstall(log: (line: string) => void): Promise<number> {
@@ -58,6 +68,7 @@ export async function doInstall(
   components?: Components,
   prefs?: Prefs,
 ): Promise<void> {
+  ompNotes(shellProfiles(), claudeStatusLine()).forEach((n) => log(`note: ${n}`));
   const starship = await ensureStarship(update, log);
   if (components?.terminal && !detectNerdFonts().includes(TERMINAL_FONT)) {
     log(`installing ${TERMINAL_FONT} for the terminal settings`);

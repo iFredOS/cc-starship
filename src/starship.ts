@@ -34,10 +34,22 @@ export function assetName(os: string, arch: string): string {
   return os === "windows" ? `starship-${arch}-pc-windows-msvc.zip` : `starship-${arch}-apple-darwin.tar.gz`;
 }
 
-export function managedBy(path: string, ours = installDir()): Manager {
+function realPath(path: string): string {
+  try {
+    return Deno.realPathSync(path);
+  } catch {
+    return path;
+  }
+}
+
+/** Who installed the starship at `path`; `real` is where it resolves (symlinks followed). */
+export function managedBy(path: string, ours = installDir(), real = realPath(path)): Manager {
   const p = path.replaceAll("\\", "/").toLowerCase();
   if (p.startsWith(ours.replaceAll("\\", "/").toLowerCase())) return "ours";
-  if (p.includes("/homebrew/") || p.includes("/cellar/") || p === "/usr/local/bin/starship") return "brew";
+  // Homebrew on Intel Macs links /usr/local/bin into its Cellar; the install script copies a plain file there.
+  if (p.includes("/homebrew/") || p.includes("/cellar/") || real.toLowerCase().includes("/cellar/")) {
+    return "brew";
+  }
   if (p.includes("/scoop/")) return "scoop";
   if (p.includes("/program files/starship/")) return "winget";
   return "unknown";

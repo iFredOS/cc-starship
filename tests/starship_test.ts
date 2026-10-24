@@ -43,6 +43,19 @@ Deno.test("knows who installed starship", () => {
   assertEquals(managedBy("/usr/bin/starship"), "unknown");
 });
 
+Deno.test("/usr/local/bin is Homebrew's only when it links into the Cellar (Intel Macs)", () => {
+  const ours = "/x";
+  assertEquals(
+    managedBy("/usr/local/bin/starship", ours, "/usr/local/Cellar/starship/1.27.0/bin/starship"),
+    "brew",
+  );
+  assertEquals(
+    managedBy("/usr/local/bin/starship", ours, "/usr/local/bin/starship"),
+    "unknown",
+    "the install script",
+  );
+});
+
 Deno.test("update plan: package manager when it owns starship, else our own download", () => {
   assertEquals(
     updatePlan({ path: "/opt/homebrew/bin/starship", version: "1.26.0", managedBy: "brew" }, "1.27.0"),

@@ -152,7 +152,7 @@ function readSettings(path: string): Record<string, unknown> | null {
 
 // ── Shell profiles ───────────────────────────────────────────────────────
 
-function shellProfiles(): string[] {
+export function shellProfiles(): string[] {
   const override = Deno.env.get("STARSHIP_STATUSLINE_PROFILES");
   if (override !== undefined) return override.split(";").filter(Boolean);
   if (!isWindows) {
@@ -447,7 +447,7 @@ function syncSettings(state: InstalledState, manifest: Manifest, report: string[
   setUsageHook(data, state.bin, hook);
   manifest.settings.written = writeOwned(path, JSON.stringify(data, null, 2) + "\n");
   if (bar) report.push(`${path}: statusLine runs ${state.bin}`);
-  if (hook) report.push(`${path}: Claude sees your usage with every prompt`);
+  if (hook) report.push(`${path}: Claude gets your usage (see "Send usage to Claude" for when)`);
 }
 
 function removeSettings(manifest: Manifest, report: string[], bin = ""): void {
