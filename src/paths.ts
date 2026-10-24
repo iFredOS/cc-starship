@@ -30,6 +30,8 @@ export const paths = {
   manifest: () => join(installDir(), "manifest.json"),
   backups: () => join(installDir(), "backups"),
   usage: () => join(installDir(), "usage"),
+  /** Per-session snapshots of the bar, read by the usage hook. */
+  sessions: () => join(installDir(), "sessions"),
   /** Where Starship reads the shell prompt config. */
   starshipConfig: () => Deno.env.get("STARSHIP_CONFIG") || join(home(), ".config", "starship.toml"),
   claudeDir: () => Deno.env.get("CLAUDE_CONFIG_DIR") || join(home(), ".claude"),

@@ -1,7 +1,7 @@
 // starship-statusline: installer, uninstaller and runtime for a Starship-rendered
 // Claude Code status bar and matching shell prompt.
 import { doInstall, ensureStarship, previewLines, runUninstall, VERSION } from "./app.ts";
-import { readInstalled, setComponents, setPrefs, setTheme } from "./engine.ts";
+import { type Components, readInstalled, setComponents, setPrefs, setTheme } from "./engine.ts";
 import {
   detectNerdFonts,
   fontFamilies,
@@ -11,6 +11,7 @@ import {
   uninstallFont,
   windowsTerminalSettings,
 } from "./fonts.ts";
+import { hookOutput, pruneSnapshots, snapshotFile } from "./hook.ts";
 import { paths, readState } from "./paths.ts";
 import { allPresets, DEFAULT_PRESET, findPreset } from "./presets.ts";
 import { findStarship, latestVersion, runUpdate, uninstallPlan, updatePlan } from "./starship.ts";
@@ -29,12 +30,13 @@ Claude Code status bar and shell prompt, rendered by Starship.
   starship-statusline presets          list presets
   starship-statusline preview [NAME]   print a preset's status bar and shell prompt
   starship-statusline status           what is installed: parts, Starship, Nerd Fonts
-  starship-statusline components [bar|shell|usage] [on|off]
+  starship-statusline components [bar|shell|usage|hook] [on|off]
   starship-statusline font list | install ID | remove ID
   starship-statusline starship update | remove
   starship-statusline prefs [language auto|en|fr-CA] [clock auto|24h|12h]
   starship-statusline statusline       (run by Claude Code) render the status bar from stdin
-  starship-statusline usage            (run by the shell prompt) print Claude usage`;
+  starship-statusline usage            (run by the shell prompt) print Claude usage
+  starship-statusline hook             (run by Claude Code) tell Claude its usage with each prompt`;
 
 async function status(): Promise<number> {
   const state = readInstalled();
@@ -49,7 +51,10 @@ async function status(): Promise<number> {
   console.log(`installed:  ${state ? `yes, ${findPreset(state.theme)?.name}` : "no"}`);
   if (state) {
     const c = state.components;
-    console.log(`parts:      status bar ${on(c.bar)}, shell prompt ${on(c.shell)}, usage ${on(c.usage)}`);
+    console.log(
+      `parts:      status bar ${on(c.bar)}, shell prompt ${on(c.shell)}, usage ${on(c.usage)}, ` +
+        `usage for Claude ${on(c.hook)}`,
+    );
   }
   const update = info && latest && updatePlan(info, latest) ? ` (update to ${latest} available)` : "";
   console.log(
@@ -99,10 +104,10 @@ async function componentsCommand(args: string[]): Promise<number> {
     console.log(JSON.stringify(state.components));
     return 0;
   }
-  if (!["bar", "shell", "usage"].includes(name) || !["on", "off"].includes(value)) {
-    throw new Error("usage: components bar|shell|usage on|off");
+  if (!["bar", "shell", "usage", "hook"].includes(name) || !["on", "off"].includes(value)) {
+    throw new Error("usage: components bar|shell|usage|hook on|off");
   }
-  const next = { ...state.components, [name]: value === "on" };
+  const next: Components = { ...state.components, [name]: value === "on" };
   (await setComponents(next)).forEach((l) => console.log(`  ${l}`));
   return 0;
 }
@@ -150,7 +155,7 @@ async function starshipCommand(action: string | undefined, log: (l: string) => v
 
 async function statusline(): Promise<void> {
   const text = await new Response(Deno.stdin.readable).text();
-  let payload = {};
+  let payload: Record<string, unknown> = {};
   try {
     payload = JSON.parse(text);
   } catch {
@@ -166,6 +171,9 @@ async function statusline(): Promise<void> {
     columns,
     accountEmail: readAccountEmail(paths.claudeAccount()),
     usageFile: paths.usage(),
+    snapshotFile: "session_id" in payload
+      ? snapshotFile(paths.sessions(), String(payload.session_id))
+      : undefined,
     prefs: resolvePrefs(readInstalled()?.prefs ?? DEFAULT_PREFS),
   });
   await Deno.stdout.write(new TextEncoder().encode(out));
@@ -188,6 +196,17 @@ export async function main(args: string[]): Promise<number> {
     case "statusline":
       await statusline();
       return 0;
+    case "hook": {
+      const input = await new Response(Deno.stdin.readable).text();
+      const out = hookOutput(input, {
+        sessions: paths.sessions(),
+        usageFile: paths.usage(),
+        prefs: resolvePrefs(readInstalled()?.prefs ?? DEFAULT_PREFS),
+      });
+      if (out) await Deno.stdout.write(new TextEncoder().encode(out + "\n"));
+      pruneSnapshots(paths.sessions());
+      return 0;
+    }
     case "usage":
       await Deno.stdout.write(new TextEncoder().encode(usageText(paths.usage())));
       return 0;

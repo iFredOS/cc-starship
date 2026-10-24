@@ -197,14 +197,18 @@ function unhookProfile(entry: ProfileEntry): string {
 
 // ── Components ───────────────────────────────────────────────────────────
 
-/** What can be switched on and off. `usage` needs `shell` (and `bar` to have data). */
+/** What can be switched on and off. `usage` needs `shell`; `usage` and `hook` need `bar` for data. */
 export interface Components {
   bar: boolean;
   shell: boolean;
   usage: boolean;
+  /** Claude Code gets the bar's usage numbers with every prompt. */
+  hook: boolean;
 }
 
-export const ALL_COMPONENTS: Components = { bar: true, shell: true, usage: true };
+export const ALL_COMPONENTS: Components = { bar: true, shell: true, usage: true, hook: true };
+/** Parts added after the first release start off for existing installs. */
+const NEW_COMPONENTS_OFF = { hook: false };
 
 export interface InstalledState extends State {
   bin: string;
@@ -216,7 +220,13 @@ export interface InstalledState extends State {
 /** The installed state, or null when not installed. */
 export function readInstalled(): InstalledState | null {
   const s = readState() as InstalledState | null;
-  return s ? { ...s, components: s.components ?? ALL_COMPONENTS, prefs: s.prefs ?? DEFAULT_PREFS } : null;
+  return s
+    ? {
+      ...s,
+      components: s.components ? { ...NEW_COMPONENTS_OFF, ...s.components } : ALL_COMPONENTS,
+      prefs: s.prefs ?? DEFAULT_PREFS,
+    }
+    : null;
 }
 
 function preset(id: string): Preset {
@@ -264,7 +274,34 @@ function removeShell(manifest: Manifest, report: string[]): void {
   manifest.profiles = [];
 }
 
-function addBar(state: InstalledState, manifest: Manifest, report: string[]): void {
+function hookCommand(bin: string): string {
+  return `${JSON.stringify(bin.replaceAll("\\", "/"))} hook`;
+}
+
+type HookGroup = { matcher?: string; hooks?: { command?: string }[] };
+
+/** Our UserPromptSubmit group: any that runs `<starship-statusline> hook`. */
+function isOurHook(group: HookGroup, bin: string): boolean {
+  return (group.hooks ?? []).some((h) =>
+    h.command === hookCommand(bin) || /starship-statusline[^"]*" hook$/.test(h.command ?? "")
+  );
+}
+
+/** `data` with our usage hook added (or taken out), leaving every other hook alone. */
+function setUsageHook(data: Record<string, unknown>, bin: string, on: boolean): void {
+  const hooks = (data.hooks ?? {}) as Record<string, HookGroup[]>;
+  const groups = (hooks.UserPromptSubmit ?? []).filter((g) => !isOurHook(g, bin));
+  if (on) groups.push({ hooks: [{ type: "command", command: hookCommand(bin) } as { command: string }] });
+  if (groups.length) hooks.UserPromptSubmit = groups;
+  else delete hooks.UserPromptSubmit;
+  if (Object.keys(hooks).length) data.hooks = hooks;
+  else delete data.hooks;
+}
+
+/** settings.json holds two parts: the statusLine (bar) and the UserPromptSubmit hook. */
+function syncSettings(state: InstalledState, manifest: Manifest, report: string[]): void {
+  const { bar, hook } = state.components;
+  if (!bar && !hook) return removeSettings(manifest, report, state.bin);
   const path = paths.claudeSettings();
   const settings = readSettings(path);
   manifest.settings ??= {
@@ -275,27 +312,33 @@ function addBar(state: InstalledState, manifest: Manifest, report: string[]): vo
     priorStatusLine: settings?.statusLine ?? null,
   };
   const data = settings ?? {};
-  data.statusLine = {
-    type: "command",
-    command: statusLineCommand(state.bin),
-    padding: 0,
-    refreshInterval: 60,
-  };
+  if (bar) {
+    data.statusLine = {
+      type: "command",
+      command: statusLineCommand(state.bin),
+      padding: 0,
+      refreshInterval: 60,
+    };
+  } else if (manifest.settings.hadStatusLine) data.statusLine = manifest.settings.priorStatusLine;
+  else delete data.statusLine;
+  setUsageHook(data, state.bin, hook);
   manifest.settings.written = writeOwned(path, JSON.stringify(data, null, 2) + "\n");
-  report.push(`${path}: statusLine runs ${state.bin}`);
+  if (bar) report.push(`${path}: statusLine runs ${state.bin}`);
+  if (hook) report.push(`${path}: Claude sees your usage with every prompt`);
 }
 
-function removeBar(manifest: Manifest, report: string[]): void {
+function removeSettings(manifest: Manifest, report: string[], bin = ""): void {
   const entry = manifest.settings;
   if (!entry) return;
   if (currentSha(entry.path) === entry.written || !lstat(entry.path)) {
     restorePrior(entry.path, entry.prior);
     report.push(`${entry.path}: restored`);
   } else {
-    // Edited since install: keep the edits, put back only the statusLine.
+    // Edited since install: keep the edits, put back only the statusLine and drop our hook.
     const data = readSettings(entry.path) ?? {};
     if (entry.hadStatusLine) data.statusLine = entry.priorStatusLine;
     else delete data.statusLine;
+    setUsageHook(data, bin, false);
     writeText(entry.path, JSON.stringify(data, null, 2) + "\n");
     report.push(`${entry.path}: statusLine restored, your other changes kept`);
   }
@@ -309,8 +352,7 @@ function apply(state: InstalledState, manifest: Manifest, report: string[]): voi
   writeText(paths.state(), JSON.stringify(state, null, 2) + "\n");
   if (state.components.shell) addShell(p, state, manifest, report);
   else removeShell(manifest, report);
-  if (state.components.bar) addBar(state, manifest, report);
-  else removeBar(manifest, report);
+  syncSettings(state, manifest, report);
   saveManifest(manifest);
 }
 
@@ -324,7 +366,7 @@ export async function install(
   const previous = readInstalled();
   const components = o.components ?? previous?.components ?? ALL_COMPONENTS;
   const prefs = o.prefs ?? previous?.prefs ?? DEFAULT_PREFS;
-  if (components.bar) readSettings(paths.claudeSettings()); // throws before anything is written
+  if (components.bar || components.hook) readSettings(paths.claudeSettings()); // throws before anything is written
   const report: string[] = [];
   const manifest = readManifest() ?? { version: 1, installedAt: new Date().toISOString(), profiles: [] };
   Deno.mkdirSync(paths.backups(), { recursive: true });
@@ -359,7 +401,7 @@ export async function setTheme(presetId: string): Promise<string[]> {
 /** Switches components on or off; each one switched off is restored exactly. */
 export async function setComponents(components: Components): Promise<string[]> {
   const { state, manifest } = installed();
-  if (components.bar) readSettings(paths.claudeSettings()); // throws before anything is written
+  if (components.bar || components.hook) readSettings(paths.claudeSettings()); // throws before anything is written
   const report: string[] = [];
   apply({ ...state, components }, manifest, report);
   return await Promise.resolve(report);
@@ -377,7 +419,7 @@ export async function uninstall(): Promise<string[]> {
   if (!manifest) throw new Error(`nothing to uninstall: no manifest in ${installDir()}`);
   const report: string[] = [];
   removeShell(manifest, report);
-  removeBar(manifest, report);
+  removeSettings(manifest, report, readInstalled()?.bin);
   removeInstallDir();
   report.push(`${installDir()}: removed`);
   return await Promise.resolve(report);

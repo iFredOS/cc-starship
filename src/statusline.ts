@@ -3,6 +3,7 @@
 // formats follow the cc-memento oh-my-posh bar, with Nerd Font icons.
 import { mkdirSync, renameSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
+import { saveSnapshot } from "./hook.ts";
 import { home } from "./paths.ts";
 import type { Preset } from "./presets.ts";
 import { type Clock, DEFAULT_PREFS, formatWhen, type Language, resolvePrefs } from "./when.ts";
@@ -17,6 +18,8 @@ export interface BarOptions {
   columns?: number;
   accountEmail?: string;
   usageFile?: string;
+  /** Where to save this session's numbers for the usage hook. */
+  snapshotFile?: string;
   /** Language and clock for reset times; defaults to the system's. */
   prefs?: { language: Language; clock: Clock };
 }
@@ -32,7 +35,6 @@ const ACCENT = "\x02";
 const rgb = (hex: string) => hex.match(/\w\w/g)!.map((h) => parseInt(h, 16));
 const fg = (hex: string) => `${ESC}[38;2;${rgb(hex).join(";")}m`;
 const bg = (hex: string) => `${ESC}[48;2;${rgb(hex).join(";")}m`;
-const AMBER = fg("#fabd2f");
 
 /** WCAG contrast ratio between two colors. */
 function contrast(a: string, b: string): number {
@@ -208,6 +210,7 @@ export function buildBar(j: Json, opts: BarOptions): { dir: string; vars: Record
   // Claude Code sets COLUMNS; keep a margin for the bar's own indent.
   const budget = (opts.columns ?? Infinity) - 2;
   if (opts.usageFile) saveUsage(opts.usageFile, fiveHour, sevenDay);
+  if (opts.snapshotFile) saveSnapshot(opts.snapshotFile, j);
   const prefs = opts.prefs ?? resolvePrefs(DEFAULT_PREFS);
 
   const accent = (s: string) => `${ACCENT}${s}${RESTORE}`;

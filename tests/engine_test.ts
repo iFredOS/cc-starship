@@ -1,7 +1,15 @@
 import { assert, assertEquals, assertRejects, assertStringIncludes } from "@std/assert";
 import { createHash } from "node:crypto";
 import { join } from "node:path";
-import { install, readInstalled, setComponents, setPrefs, setTheme, uninstall } from "../src/engine.ts";
+import {
+  ALL_COMPONENTS,
+  install,
+  readInstalled,
+  setComponents,
+  setPrefs,
+  setTheme,
+  uninstall,
+} from "../src/engine.ts";
 import { tempDir } from "./helpers.ts";
 
 const sha = (path: string) => {
@@ -201,16 +209,19 @@ Deno.test("components: bar only leaves the shell alone; toggling restores each p
     Deno.writeTextFileSync(s.zshrc, "export A=1\n");
     const [starship0, settings0, zshrc0] = [s.starship, s.settings, s.zshrc].map(sha);
 
-    await install("rainbow", { ...opts(s), components: { bar: true, shell: false, usage: false } });
+    await install("rainbow", {
+      ...opts(s),
+      components: { bar: true, shell: false, usage: false, hook: false },
+    });
     assertEquals(sha(s.starship), starship0, "shell prompt untouched");
     assertEquals(sha(s.zshrc), zshrc0, "profile untouched");
     assertStringIncludes(Deno.readTextFileSync(s.settings), "statusline");
 
-    await setComponents({ bar: true, shell: true, usage: true });
+    await setComponents({ bar: true, shell: true, usage: true, hook: false });
     assertStringIncludes(Deno.readTextFileSync(s.starship), "${custom.claude}");
     assertStringIncludes(Deno.readTextFileSync(s.zshrc), "init zsh");
 
-    await setComponents({ bar: false, shell: true, usage: false });
+    await setComponents({ bar: false, shell: true, usage: false, hook: false });
     assertEquals(sha(s.settings), settings0, "status bar off: settings.json back exactly");
     assert(!Deno.readTextFileSync(s.starship).includes("${custom.claude}"), "usage segment gone");
 
@@ -232,6 +243,74 @@ Deno.test("language and clock are saved with the install and touch no config fil
     assertEquals([s.starship, s.settings, s.zshrc].map(sha), files);
     await install("ember", opts(s));
     assertEquals(readInstalled()?.prefs, { language: "en", clock: "12h" }, "a reinstall keeps them");
+  } finally {
+    s.restore();
+  }
+});
+
+Deno.test("usage hook: added next to the user's own hooks, removed again exactly", async () => {
+  const s = sandbox();
+  try {
+    const mine = {
+      model: "opus",
+      hooks: {
+        UserPromptSubmit: [{ hooks: [{ type: "command", command: "echo mine" }] }],
+        PreToolUse: [{ matcher: "Bash", hooks: [{ type: "command", command: "guard.sh" }] }],
+      },
+    };
+    Deno.writeTextFileSync(s.settings, JSON.stringify(mine, null, 2) + "\n");
+    const before = sha(s.settings);
+
+    await install("rainbow", { ...opts(s), components: { ...ALL_COMPONENTS, hook: true } });
+    const on = JSON.parse(Deno.readTextFileSync(s.settings));
+    const commands = on.hooks.UserPromptSubmit.flatMap((g: { hooks: { command: string }[] }) =>
+      g.hooks.map((h) => h.command)
+    );
+    assert(commands.includes("echo mine"), "the user's hook kept");
+    assert(commands.some((c: string) => c.endsWith(" hook")), JSON.stringify(commands));
+    assertEquals(on.hooks.PreToolUse, mine.hooks.PreToolUse);
+
+    await setComponents({ ...ALL_COMPONENTS, hook: false });
+    const off = JSON.parse(Deno.readTextFileSync(s.settings));
+    assertEquals(off.hooks, mine.hooks, "only our hook removed");
+    assertStringIncludes(off.statusLine.command, "statusline", "status bar still on");
+
+    await setComponents({ ...ALL_COMPONENTS, hook: true });
+    await uninstall();
+    assertEquals(sha(s.settings), before);
+  } finally {
+    s.restore();
+  }
+});
+
+Deno.test("usage hook without the status bar keeps the user's statusLine", async () => {
+  const s = sandbox();
+  try {
+    Deno.writeTextFileSync(s.settings, '{"statusLine": {"type": "command", "command": "node old.mjs"}}\n');
+    await install("rainbow", {
+      ...opts(s),
+      components: { ...ALL_COMPONENTS, bar: false, hook: true },
+    });
+    const data = JSON.parse(Deno.readTextFileSync(s.settings));
+    assertEquals(data.statusLine, { type: "command", command: "node old.mjs" });
+    assertEquals(data.hooks.UserPromptSubmit.length, 1);
+    await setComponents({ ...ALL_COMPONENTS, bar: false, hook: false });
+    assertEquals(JSON.parse(Deno.readTextFileSync(s.settings)), {
+      statusLine: { type: "command", command: "node old.mjs" },
+    });
+  } finally {
+    s.restore();
+  }
+});
+
+Deno.test("an install from before the hook existed reads as hook off", async () => {
+  const s = sandbox();
+  try {
+    await install("rainbow", opts(s));
+    const state = JSON.parse(Deno.readTextFileSync(join(s.installDir, "state.json")));
+    state.components = { bar: true, shell: true, usage: true, hook: false };
+    Deno.writeTextFileSync(join(s.installDir, "state.json"), JSON.stringify(state));
+    assertEquals(readInstalled()?.components.hook, false);
   } finally {
     s.restore();
   }
