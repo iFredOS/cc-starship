@@ -919,3 +919,61 @@ Deno.test("profile paths are looked up again in the background (a shell installe
     s.restore();
   }
 });
+
+/** A stand-in for Windows PowerShell's execution policy: `state` holds the CurrentUser value. */
+function fakeWindowsPowerShell(home: string, currentUser: string): string {
+  const state = join(home, "policy");
+  Deno.writeTextFileSync(state, currentUser);
+  const exe = join(home, "fake-powershell");
+  Deno.writeTextFileSync(
+    exe,
+    `#!/bin/sh
+case "$*" in
+  *Set-ExecutionPolicy*) printf %s "$(echo "$*" | sed -E 's/.*-ExecutionPolicy ([A-Za-z]+).*/\\1/')" > "${state}";;
+esac
+cu=$(cat "${state}")
+if [ "$cu" = Undefined ]; then echo Restricted; else echo "$cu"; fi
+echo "$cu"
+`,
+  );
+  Deno.chmodSync(exe, 0o755);
+  Deno.env.set("CC_STARSHIP_WINPS", exe);
+  return state;
+}
+
+Deno.test("Windows PowerShell that runs no scripts: allowed for your account, put back at uninstall", async () => {
+  const s = sandbox();
+  try {
+    const ps1 = join(s.home, "Documents", "WindowsPowerShell", "Microsoft.PowerShell_profile.ps1");
+    Deno.mkdirSync(join(s.home, "Documents", "WindowsPowerShell"), { recursive: true });
+    Deno.env.set("CC_STARSHIP_PROFILES", ps1);
+    const policy = fakeWindowsPowerShell(s.home, "Undefined");
+    const report = await install("rainbow", opts(s));
+    assertEquals(Deno.readTextFileSync(policy), "RemoteSigned", "the profile can run");
+    assert(report.some((l) => l.includes("RemoteSigned")), report.join("\n"));
+    await setTheme("ember");
+    await uninstall();
+    assertEquals(Deno.readTextFileSync(policy), "Undefined", "put back");
+  } finally {
+    Deno.env.delete("CC_STARSHIP_WINPS");
+    s.restore();
+  }
+});
+
+Deno.test("Windows PowerShell that already runs scripts: its setting is never touched", async () => {
+  const s = sandbox();
+  try {
+    const ps1 = join(s.home, "Documents", "WindowsPowerShell", "Microsoft.PowerShell_profile.ps1");
+    Deno.mkdirSync(join(s.home, "Documents", "WindowsPowerShell"), { recursive: true });
+    Deno.env.set("CC_STARSHIP_PROFILES", ps1);
+    const policy = fakeWindowsPowerShell(s.home, "Bypass");
+    await install("rainbow", opts(s));
+    assertEquals(Deno.readTextFileSync(policy), "Bypass");
+    Deno.writeTextFileSync(policy, "Undefined"); // changed by you after install
+    await uninstall();
+    assertEquals(Deno.readTextFileSync(policy), "Undefined", "yours stays");
+  } finally {
+    Deno.env.delete("CC_STARSHIP_WINPS");
+    s.restore();
+  }
+});

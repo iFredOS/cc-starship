@@ -59,6 +59,8 @@ interface Manifest {
   promptOff?: ProfileEntry[];
   /** cmux/Ghostty config blocks. */
   terminal?: ProfileEntry[];
+  /** Windows PowerShell's CurrentUser execution policy before we allowed scripts; null: not changed. */
+  executionPolicy?: { prior: string | null };
   /** `font`: the default font we last wrote (missing in older manifests, which wrote size 15). */
   windowsTerminal?: FileEntry & { fonts: WindowsTerminalPrior; font?: { face: string; size: number } };
 }
@@ -679,6 +681,66 @@ function removeSettings(manifest: Manifest, report: string[], bin = ""): void {
   delete manifest.settings;
 }
 
+// ── Windows PowerShell's execution policy ────────────────────────────────
+
+/** Windows PowerShell 5.1 (tests point it at a stand-in). */
+const windowsPowerShell = () => Deno.env.get("CC_STARSHIP_WINPS") ?? "powershell";
+const isWindowsPowerShellProfile = (path: string) => /[\\/]WindowsPowerShell[\\/]/i.test(path);
+
+/** Runs `command` in Windows PowerShell; its output lines, or null when it can't run. */
+function windowsPowerShellLines(command: string): string[] | null {
+  try {
+    const out = new Deno.Command(windowsPowerShell(), {
+      args: ["-NoProfile", "-NonInteractive", "-Command", command],
+      stdout: "piped",
+      stderr: "null",
+    }).outputSync();
+    return out.success
+      ? new TextDecoder().decode(out.stdout).trim().split(/\r?\n/).map((l) => l.trim())
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+const POLICY = "Get-ExecutionPolicy; Get-ExecutionPolicy -Scope CurrentUser";
+
+/**
+ * Windows PowerShell runs no scripts on a fresh account, the profile included: our blocks
+ * would never run, and each new tab would show an error. When one of them is in its profile,
+ * scripts are allowed for this account (RemoteSigned, PowerShell 7's own default); uninstall
+ * puts the setting back. Checked once per install.
+ */
+function allowProfileScripts(manifest: Manifest, report: string[]): void {
+  if (manifest.executionPolicy || !allBlocks(manifest).some((e) => isWindowsPowerShellProfile(e.path))) {
+    return;
+  }
+  manifest.executionPolicy = { prior: null };
+  const [effective, currentUser] = windowsPowerShellLines(POLICY) ?? [];
+  if (effective === "AllSigned") {
+    report.push("Windows PowerShell runs only signed scripts here, so your profile doesn't run in it");
+  }
+  if (effective !== "Restricted" && effective !== "Undefined") return;
+  const [now, nowUser] = windowsPowerShellLines(
+    `Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned -Force -ErrorAction SilentlyContinue; ${POLICY}`,
+  ) ?? [];
+  if (nowUser === "RemoteSigned") manifest.executionPolicy = { prior: currentUser ?? "Undefined" };
+  report.push(
+    now === "RemoteSigned"
+      ? "Windows PowerShell: scripts allowed for your account (RemoteSigned), so your profile runs"
+      : "Windows PowerShell runs no scripts here (a policy set by your administrator), so your profile doesn't run in it",
+  );
+}
+
+/** Puts back the execution policy we changed, unless you changed it since. */
+function restoreProfileScripts(manifest: Manifest, report: string[]): void {
+  const prior = manifest.executionPolicy?.prior;
+  delete manifest.executionPolicy;
+  if (!prior || windowsPowerShellLines(POLICY)?.[1] !== "RemoteSigned") return;
+  windowsPowerShellLines(`Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy ${prior} -Force`);
+  report.push(`Windows PowerShell: script setting for your account put back (${prior})`);
+}
+
 /** Brings the files in line with `state`: its preset, and each component on or off. */
 function apply(state: InstalledState, manifest: Manifest, report: string[]): void {
   const p = preset(state.theme);
@@ -701,6 +763,7 @@ function apply(state: InstalledState, manifest: Manifest, report: string[]): voi
   else removeMemory(manifest, report);
   // After memory: which profiles need the prompt-off block depends on it.
   if (!state.components.shell) syncPromptOff(state, manifest, report);
+  allowProfileScripts(manifest, report);
   if (state.components.terminal) addTerminal(manifest, report);
   else removeTerminal(manifest, report);
   saveManifest(manifest);
@@ -784,6 +847,7 @@ export async function uninstall(): Promise<string[]> {
   removeMemory(manifest, report);
   removeShell(manifest, report);
   removeSettings(manifest, report, readInstalled()?.bin);
+  restoreProfileScripts(manifest, report);
   removeInstallDir();
   report.push(`${installDir()}: removed`);
   return await Promise.resolve(report);
