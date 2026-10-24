@@ -1,4 +1,7 @@
 "$schema" = 'https://starship.rs/config-schema.json'
+# Starship's 500 ms default is too short for a cold first start of the usage segment
+# (Defender scanning a fresh download, x64 emulation on ARM): it would print a warning.
+command_timeout = 2000
 
 format = """
 [](fg:s1_bg)\

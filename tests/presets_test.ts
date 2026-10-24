@@ -85,3 +85,11 @@ Deno.test("previews render asynchronously, both Starship runs at once, same line
   const strip = (l: string[]) => l.map((s) => stripAnsi(s).replace(/\d+:\d+ ?[AP]M|\d+ h \d*/g, "T"));
   assertEquals(strip(await previewLinesAsync(p, "starship")), strip(previewLines(p, "starship")));
 });
+
+Deno.test("shell config: a cold first start of the usage segment never prints Starship's timeout warning", () => {
+  // Measured on Windows: the first run of a freshly downloaded exe (Defender scan, x64
+  // emulation on ARM) took longer than Starship's default 500 ms.
+  const config = shellConfig(findPreset("fusain")!, "/x/cc-starship");
+  const timeout = Number(config.match(/^command_timeout = (\d+)$/m)?.[1]);
+  assert(timeout >= 2000, `command_timeout ${timeout}`);
+});
