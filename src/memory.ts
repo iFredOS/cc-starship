@@ -46,7 +46,7 @@ function powershell(lastdir: string): string[] {
     "    $size = [long]0",
     "    if (Test-Path -LiteralPath $stamp) { $null = [long]::TryParse([IO.File]::ReadAllText($stamp), [ref]$size) }",
     "    # Only once it has grown by a quarter since the last pass: most tab starts skip all this.",
-    "    if ($f -and ($size -eq 0 -or $f.Length -gt $size * 1.25)) {",
+    "    if ($f -and ($size -eq 0 -or $f.Length -lt $size -or $f.Length -gt $size * 1.25)) {",
     '      $first = "$h.before-cc-starship"',
     "      if (-not (Test-Path -LiteralPath $first)) { Copy-Item -LiteralPath $h -Destination $first }",
     "      $entries = [Collections.Generic.List[string]]::new(); $cur = $null",

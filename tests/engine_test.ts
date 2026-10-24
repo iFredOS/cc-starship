@@ -602,3 +602,35 @@ Deno.test("an install from the old starship-statusline folder must be moved over
     s.restore();
   }
 });
+
+Deno.test("commands stay quoted for paths bash would misread ($, quotes, &)", async () => {
+  const s = sandbox();
+  try {
+    const bin = join(s.home, "O'Brien$x", "cc");
+    await install("rainbow", { ...opts(s), bin });
+    assertEquals(JSON.parse(Deno.readTextFileSync(s.settings)).statusLine.command, `"${bin}" statusline`);
+  } finally {
+    s.restore();
+  }
+});
+
+Deno.test("a symlinked settings.json edited since install: the link comes back, the edits are saved beside it", async () => {
+  const s = sandbox();
+  try {
+    const target = join(s.home, "dotfiles-settings.json");
+    Deno.writeTextFileSync(target, '{"model": "opus"}\n');
+    Deno.symlinkSync(target, s.settings);
+    await install("rainbow", opts(s));
+    const data = JSON.parse(Deno.readTextFileSync(s.settings));
+    data.theme = "dark";
+    Deno.writeTextFileSync(s.settings, JSON.stringify(data));
+    const report = await uninstall();
+    assertEquals(Deno.readLinkSync(s.settings), target);
+    assertEquals(Deno.readTextFileSync(target), '{"model": "opus"}\n', "the dotfile is untouched");
+    const saved = `${s.settings}.cc-starship-edits.json`;
+    assertEquals(JSON.parse(Deno.readTextFileSync(saved)), { model: "opus", theme: "dark" });
+    assert(report.some((l) => l.includes(saved)), report.join("\n"));
+  } finally {
+    s.restore();
+  }
+});

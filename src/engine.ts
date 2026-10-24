@@ -136,7 +136,7 @@ function currentSha(path: string): string | null {
  * only when needed (PowerShell, which Claude Code may use for hooks, can't run a quoted path). */
 function commandPath(bin: string): string {
   const path = bin.replaceAll("\\", "/");
-  return /\s/.test(path) ? JSON.stringify(path) : path;
+  return /^[\w/:.-]+$/.test(path) ? path : JSON.stringify(path);
 }
 
 const statusLineCommand = (bin: string) => `${commandPath(bin)} statusline`;
@@ -418,7 +418,15 @@ function putBackJson(entry: FileEntry, data: Record<string, unknown>, indent: nu
     restorePrior(entry.path, entry.prior);
     return "restored";
   }
-  writeText(entry.path, JSON.stringify(data, null, indent) + "\n");
+  const text = JSON.stringify(data, null, indent) + "\n";
+  if (entry.prior.kind === "symlink") {
+    // Your link comes back; what changed since install is saved beside it, not written into the dotfile.
+    const saved = `${entry.path}.cc-starship-edits.json`;
+    writeText(saved, text);
+    restorePrior(entry.path, entry.prior);
+    return `your link is back; changes made since install are in ${saved}`;
+  }
+  writeText(entry.path, text);
   return "our changes taken out, yours kept";
 }
 
@@ -531,9 +539,12 @@ export async function install(
   preset(presetId);
   const legacy = legacyInstallDir();
   if (legacy !== installDir() && lstat(join(legacy, "manifest.json"))) {
+    const command = isWindows
+      ? `$env:CC_STARSHIP_HOME = '${legacy}'; & '${Deno.execPath()}' uninstall; Remove-Item Env:CC_STARSHIP_HOME`
+      : `CC_STARSHIP_HOME='${legacy}' '${Deno.execPath()}' uninstall`;
     throw new Error(
-      `an install made under the old name is still in ${legacy}. Uninstall it first with ` +
-        `CC_STARSHIP_HOME="${legacy}" cc-starship uninstall, then install again.`,
+      `an install made under the old name is still in ${legacy}. Remove it first with:\n  ${command}\n` +
+        `then install again.`,
     );
   }
   const previous = readInstalled();
@@ -574,7 +585,8 @@ export async function setTheme(presetId: string): Promise<string[]> {
 /** Switches components on or off; each one switched off is restored exactly. */
 export async function setComponents(components: Components): Promise<string[]> {
   const { state, manifest } = installed();
-  if (components.bar || components.hook) readSettings(paths.claudeSettings()); // throws before anything is written
+  // Throws before anything is written (switching both off still has to edit the file).
+  if (components.bar || components.hook || manifest.settings) readSettings(paths.claudeSettings());
   const report: string[] = [];
   apply({ ...state, components }, manifest, report);
   return await Promise.resolve(report);
