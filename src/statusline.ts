@@ -2,7 +2,7 @@
 // them with `starship prompt` using the generated statusline.toml. Segments and
 // formats follow the cc-memento oh-my-posh bar, with Nerd Font icons.
 import { mkdirSync, renameSync, writeFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 import { saveSnapshot } from "./hook.ts";
 import { home } from "./paths.ts";
 import type { Preset } from "./presets.ts";
@@ -138,17 +138,59 @@ function gitStatus(dir: string): { name: string; marks: string } {
   }
 }
 
+/**
+ * How many other live worktrees this repo has, read from `.git/worktrees` (no git process:
+ * on Windows each one costs ~40 ms). In a linked worktree the main checkout counts too;
+ * worktrees whose folder is gone (git's "prunable") don't.
+ */
+function otherWorktrees(dir: string): number {
+  for (let d = dir;; d = dirname(d)) {
+    const entry = join(d, ".git");
+    let info: Deno.FileInfo;
+    try {
+      info = Deno.statSync(entry);
+    } catch {
+      if (dirname(d) === d) return 0;
+      continue;
+    }
+    let common = entry, own = "";
+    if (!info.isDirectory) {
+      const gitdir = /^gitdir:\s*(.+)$/m.exec(Deno.readTextFileSync(entry))?.[1].trim();
+      if (!gitdir) return 0;
+      own = basename(resolve(d, gitdir));
+      common = dirname(dirname(resolve(d, gitdir)));
+    }
+    let count = own && basename(common) === ".git" ? 1 : 0;
+    try {
+      for (const wt of Deno.readDirSync(join(common, "worktrees"))) {
+        if (wt.name === own) continue;
+        try {
+          const folder = join(common, "worktrees", wt.name);
+          Deno.statSync(resolve(folder, Deno.readTextFileSync(join(folder, "gitdir")).trim()));
+          count++;
+        } catch {
+          // its folder is gone
+        }
+      }
+    } catch {
+      // no linked worktrees
+    }
+    return count;
+  }
+}
+
 const truncate = (s: string, max: number) => (s.length > max ? `${s.slice(0, max - 1)}…` : s);
 
 // In a worktree, its name replaces the branch; the branch is added only when it
 // isn't the one Claude Code derived from the name ("worktree-<name>").
-function branchLabel(j: Json, git: { name: string; marks: string }, max: number): string | null {
+function branchLabel(j: Json, git: { name: string; marks: string }, max: number, others = 0): string | null {
   const worktree = j.worktree?.name || j.workspace?.git_worktree;
   const branch = `${ICON.branch} ${truncate(git.name, max)}`;
-  if (!worktree) return git.name === "─" ? null : `${branch}${git.marks}`;
+  const more = others > 0 ? ` · ${ICON.worktree} ${others} more` : "";
+  if (!worktree) return git.name === "─" ? null : `${branch}${git.marks}${more}`;
   const derived = git.name === "─" ||
     [worktree, `worktree-${worktree}`, j.worktree?.branch].includes(git.name);
-  return `${ICON.worktree} ${truncate(worktree, max)}${derived ? "" : ` ${branch}`}${git.marks}`;
+  return `${ICON.worktree} ${truncate(worktree, max)}${derived ? "" : ` ${branch}`}${git.marks}${more}`;
 }
 
 // The directory as Starship's directory module shows it, for width estimates.
@@ -207,6 +249,7 @@ export function buildBar(j: Json, opts: BarOptions): { dir: string; vars: Record
   const fiveHour = limits.five_hour;
   const sevenDay = limits.seven_day;
   const git = gitStatus(dir);
+  const others = git.name === "─" ? 0 : otherWorktrees(dir);
   // Claude Code sets COLUMNS; keep a margin for the bar's own indent.
   const budget = (opts.columns ?? Infinity) - 2;
   if (opts.usageFile) saveUsage(opts.usageFile, fiveHour, sevenDay);
@@ -237,12 +280,12 @@ export function buildBar(j: Json, opts: BarOptions): { dir: string; vars: Record
   const line2 = fit(
     {
       directory: directoryLabel(dir),
-      branch: branchLabel(j, git, 24),
+      branch: branchLabel(j, git, 24, others),
       diff: cost.total_duration_ms > 0
         ? `${diff} · ${ICON.clock} ${formatDuration(cost.total_duration_ms)}`
         : diff,
     },
-    [{ diff }, { branch: branchLabel(j, git, 12) }, { diff: null }],
+    [{ branch: branchLabel(j, git, 24) }, { diff }, { branch: branchLabel(j, git, 12) }, { diff: null }],
     budget,
   ).slice(1);
 

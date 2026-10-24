@@ -191,3 +191,53 @@ Deno.test("real worktree that Claude Code doesn't flag: its own branch still sho
   assertStringIncludes(main, "\u{e725} main");
   assert(!main.includes("login-form"), "the main checkout shows main");
 });
+
+/** realWorktree() plus a second linked worktree, and a stale one whose folder is gone. */
+function worktreeFamily() {
+  const { repo, wt } = realWorktree();
+  const git = (...args: string[]) =>
+    new Deno.Command("git", {
+      args: ["-c", "user.name=t", "-c", "user.email=t@example.com", ...args],
+      cwd: repo,
+    })
+      .outputSync();
+  const second = join(repo, "..", "app-docs"), stale = join(repo, "..", "app-old");
+  git("worktree", "add", "-q", "-b", "docs", second);
+  git("worktree", "add", "-q", "-b", "old", stale);
+  Deno.removeSync(stale, { recursive: true }); // what git calls "prunable"
+  return { repo, wt, second };
+}
+
+const line2 = (dir: string, extra: Record<string, unknown> = {}, columns?: number) =>
+  plain({ model: { display_name: "x" }, workspace: { current_dir: dir, ...extra } }, { columns }).split(
+    "\n",
+  )[1];
+
+Deno.test("other worktrees: counted from the main checkout, stale ones ignored", () => {
+  const { repo } = worktreeFamily();
+  assertStringIncludes(line2(repo), "main · \u{f0645} 2 more");
+});
+
+Deno.test("other worktrees: inside one, the main checkout counts too", () => {
+  const { wt } = worktreeFamily();
+  const out = line2(wt, { git_worktree: "app-login" });
+  assertStringIncludes(out, "\u{f0645} app-login \u{e725} login-form · \u{f0645} 2 more");
+});
+
+Deno.test("other worktrees: found from a subfolder; nothing shown when there are none", () => {
+  const { repo } = worktreeFamily();
+  Deno.mkdirSync(join(repo, "src"));
+  assertStringIncludes(line2(join(repo, "src")), "2 more");
+  const lone = Deno.realPathSync(tempDir());
+  new Deno.Command("git", { args: ["init", "-q", "-b", "main"], cwd: lone }).outputSync();
+  assert(!line2(lone).includes("more"), line2(lone));
+});
+
+Deno.test("other worktrees: the count is the first thing a narrow window drops", () => {
+  const { repo } = worktreeFamily();
+  const wide = line2(repo);
+  const columns = [...wide].length; // just too narrow for the full line (plus the bar's margin)
+  const narrow = line2(repo, {}, columns);
+  assert(!narrow.includes("more"), narrow);
+  assertStringIncludes(narrow, "\u{e725} main");
+});
