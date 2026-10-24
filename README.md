@@ -176,6 +176,7 @@ Uninstall, or switching a part off, uses that record.
 | Claude Code `statusLine` and usage hook | `~/.claude/settings.json` | only these taken out; anything else you changed since is kept, your own hooks are never touched |
 | Starship start-up line, only if missing | `~/.zshrc`, or each PowerShell `$PROFILE` | the added block removed |
 | shell memory | the same profiles, in a block of its own | the block removed |
+| Windows PowerShell's script setting, only when it blocks scripts (a new Windows account does, so no profile would run) | your account's execution policy, set to `RemoteSigned` (PowerShell 7's default) | your previous setting, unless you changed it since |
 | terminal font and keys | cmux `config.ghostty`, `~/.config/ghostty/config`; Windows Terminal `settings.json` | the block removed; Windows Terminal's face and size put back |
 | Starship itself, if missing or outdated | updated through brew, winget or Scoop when they installed it; otherwise the latest release is downloaded and its checksum verified | left installed (`cc-starship starship remove` removes it) |
 
@@ -218,6 +219,7 @@ deno task test     # the tests, including install/uninstall round trips in a scr
 deno task build    # dist/: macOS arm64 and x64, Windows x64
 python3 bench.py   # this status bar vs the oh-my-posh one (needs a build)
 scripts/screenshots/make.sh   # regenerates docs/images from the real program (macOS)
+scripts/conpty/run.sh -k scripts/conpty/keys/smoke-panel.keys --all   # drives the panel on a Windows PC over SSH
 ```
 
 | Path | Holds |

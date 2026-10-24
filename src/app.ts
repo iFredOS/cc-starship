@@ -77,7 +77,16 @@ export async function doInstall(
   const starship = await ensureStarship(update, log);
   if (components?.terminal && !detectNerdFonts().includes(TERMINAL_FONT)) {
     log(`installing ${TERMINAL_FONT} for the terminal settings`);
-    (await installFont(FONTS.find((f) => f.family === TERMINAL_FONT)!)).forEach(log);
+    const font = FONTS.find((f) => f.family === TERMINAL_FONT)!;
+    try {
+      (await installFont(font)).forEach(log);
+    } catch (e) {
+      // The font is a nicety: a bad connection mustn't stop the rest.
+      log(`couldn't install ${TERMINAL_FONT} (${e instanceof Error ? e.message : e})`);
+      log(
+        `  everything else goes on; get the font later: Components → Nerd Font, or cc-starship font install ${font.id}`,
+      );
+    }
   }
   const report = await install(presetId, {
     starship,

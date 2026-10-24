@@ -344,7 +344,8 @@ export async function runUi(): Promise<number> {
     ...keys(pairs, theme(), columns() - 1),
   ];
 
-  const looks = ({ explain, roomy }: { explain: boolean; roomy: boolean }) => {
+  /** `eKey`: the window has room for the explanations, so E does something. */
+  const looks = ({ explain, roomy, eKey }: { explain: boolean; roomy: boolean; eKey: boolean }) => {
     const t = theme(), p = presets[index], w = width();
     const mark = inUse() ? ` · ${paint(t.second, "●")}${paint(t.dim, " in use")}` : "";
     const legend = `${paint("#fabd2f", "amber")}${paint(t.dim, " at 70% · ")}${paint("#fb4934", "red ▲")}${
@@ -371,7 +372,7 @@ export async function runUi(): Promise<number> {
       ...footer([
         ["↑↓←→", "choose"],
         ["⏎", state ? "use this look" : "install with this look"],
-        ["E", explain ? "hide explanations" : "explanations"],
+        ...(eKey ? [["E", explain ? "hide explanations" : "explanations"] as [string, string]] : []),
         ...(state ? [["U", "uninstall"] as [string, string]] : []),
         ["Tab", "components"],
         ["Q", "quit"],
@@ -438,11 +439,13 @@ export async function runUi(): Promise<number> {
     // then the spacing.
     const top = (roomy: boolean) =>
       header({ theme: theme(), screen, version: VERSION, width: width(), roomy });
+    const eKey = screen === "looks" &&
+      [...top(true), ...looks({ explain: true, roomy: true, eKey: true })].length <= height();
     const layouts = screen === "looks"
       ? [
-        () => [...top(true), ...looks({ explain, roomy: true })],
-        () => [...top(true), ...looks({ explain: false, roomy: true })],
-        () => [...top(false), ...looks({ explain: false, roomy: false })],
+        () => [...top(true), ...looks({ explain, roomy: true, eKey })],
+        () => [...top(true), ...looks({ explain: false, roomy: true, eKey })],
+        () => [...top(false), ...looks({ explain: false, roomy: false, eKey })],
       ]
       : screen === "components"
       ? [

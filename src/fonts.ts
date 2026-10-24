@@ -4,6 +4,7 @@
 import { createHash } from "node:crypto";
 import { basename, join } from "node:path";
 import { home, installDir, isWindows } from "./paths.ts";
+import { fetchBytes } from "./net.ts";
 
 export interface Font {
   id: string;
@@ -85,12 +86,6 @@ export function pickFontFiles(font: Font, names: string[]): string[] {
 export function parseChecksum(list: string, file: string): string | null {
   const line = list.split("\n").find((l) => l.trim().endsWith(`  ${file}`));
   return line ? line.trim().split(/\s+/)[0].toLowerCase() : null;
-}
-
-async function fetchBytes(url: string): Promise<Uint8Array> {
-  const res = await fetch(url);
-  if (!res.ok) throw new Error(`download ${url}: HTTP ${res.status}`);
-  return new Uint8Array(await res.arrayBuffer());
 }
 
 /** Downloads and verifies `font`'s archive, unpacks it into `dir`; returns the chosen .ttf files. */

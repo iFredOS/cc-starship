@@ -858,23 +858,41 @@ export function runningFromInstallDir(): boolean {
   return Deno.execPath().toLowerCase().startsWith(installDir().toLowerCase());
 }
 
+/** The V8 start-up caches compiled builds of this program keep in the temp folder. */
+const STARTUP_CACHES = ["deno-compile-cc-starship*.cache", "deno-compile-starship-statusline*.cache"];
+
 function removeInstallDir(): void {
   const dir = installDir();
-  if (!(isWindows && runningFromInstallDir())) {
+  const running = isWindows && runningFromInstallDir();
+  if (running) {
+    // Windows keeps the running exe locked: remove everything else now.
+    for (const entry of Deno.readDirSync(dir)) {
+      if (entry.name !== "bin") Deno.removeSync(join(dir, entry.name), { recursive: true });
+    }
+  } else {
     Deno.removeSync(dir, { recursive: true });
+  }
+  afterExit(running ? dir : null);
+}
+
+/**
+ * Once this program has exited (it may still write its own start-up cache then): removes
+ * `dir` if given, retrying for up to a minute, and the start-up caches.
+ */
+function afterExit(dir: string | null): void {
+  const tmp = Deno.env.get(isWindows ? "TEMP" : "TMPDIR") ?? (isWindows ? "" : "/tmp");
+  if (!isWindows) {
+    new Deno.Command("/bin/sh", {
+      args: ["-c", `sleep 1; cd "$1" && rm -f ${STARTUP_CACHES.join(" ")}`, "sh", tmp],
+      stdin: "null",
+      stdout: "null",
+      stderr: "null",
+    }).spawn().unref();
     return;
   }
-  // Windows keeps the running exe locked: remove everything else now, and let a
-  // small script delete the folder once we've exited (retrying for up to a minute),
-  // then delete itself.
-  for (const entry of Deno.readDirSync(dir)) {
-    if (entry.name !== "bin") Deno.removeSync(join(dir, entry.name), { recursive: true });
-  }
-  const script = join(Deno.env.get("TEMP") ?? dir, `cc-starship-cleanup-${Deno.pid}.cmd`);
-  Deno.writeTextFileSync(
-    script,
-    [
-      "@echo off",
+  const script = join(tmp || dir || ".", `cc-starship-cleanup-${Deno.pid}.cmd`);
+  const retry = dir
+    ? [
       "set n=0",
       ":retry",
       `rmdir /s /q "${dir}" 2>nul`,
@@ -884,10 +902,10 @@ function removeInstallDir(): void {
       "ping -n 2 127.0.0.1 >nul",
       "goto retry",
       ":done",
-      'del "%~f0"',
-      "",
-    ].join("\r\n"),
-  );
+    ]
+    : ["ping -n 2 127.0.0.1 >nul"];
+  const caches = STARTUP_CACHES.map((c) => `del /q "${join(tmp, c)}" 2>nul`);
+  Deno.writeTextFileSync(script, ["@echo off", ...retry, ...caches, 'del "%~f0"', ""].join("\r\n"));
   // `start /min` gives the script its own console, so closing this window doesn't stop it.
   new Deno.Command("cmd", {
     args: [`/c start "" /min cmd /c "${script}"`],

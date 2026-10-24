@@ -119,3 +119,10 @@ Deno.test("tiny windows: boxes and the header never throw", () => {
     header({ theme, screen: "looks", version: "1.0.0", width });
   }
 });
+
+Deno.test("looks grid: every swatch starts in the same column, even after the longest name", () => {
+  const lines = looksGrid(allPresets(), { index: 14, width: 112, theme }).map(stripAnsi);
+  const starts = (l: string) => [...l].flatMap((c, i) => (c === "\u{e0b6}" ? [i] : []));
+  const first = starts(lines[0]);
+  for (const l of lines.slice(1)) assertEquals(starts(l).slice(0, first.length), first, l);
+});

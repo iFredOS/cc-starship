@@ -1,0 +1,14 @@
+# Smoke test: open the control panel, move down the Looks list, Tab to Components, quit.
+# Navigation only: no Enter, no font or Starship actions.
+waittext Fusain 30000      # first paint (the first launch of a fresh exe can be slow: Defender)
+idle 600 8000              # let the previews finish rendering
+mark looks
+key Down 3 300             # three presses, 300 ms apart
+idle 400 4000
+mark looks-after-3-down
+key Tab
+waittext Components 5000
+idle 600 5000
+mark components
+key q
+waitexit 5000

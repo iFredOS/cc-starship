@@ -31,6 +31,9 @@ function sandbox() {
     CC_STARSHIP_PROFILES: join(home, ".zshrc"),
     // Never the real terminal settings; tests that want some list them.
     CC_STARSHIP_TERMINALS: "",
+    // Uninstall cleans the temp folder: never the real one.
+    TMPDIR: join(home, "tmp"),
+    TEMP: join(home, "tmp"),
   };
   const saved: Record<string, string | undefined> = {};
   for (const [k, v] of Object.entries(env)) {
@@ -41,6 +44,7 @@ function sandbox() {
     saved[k] = Deno.env.get(k);
     Deno.env.delete(k);
   }
+  Deno.mkdirSync(join(home, "tmp"));
   Deno.mkdirSync(join(home, ".config"));
   Deno.mkdirSync(join(home, ".claude"));
   return {
@@ -974,6 +978,24 @@ Deno.test("Windows PowerShell that already runs scripts: its setting is never to
     assertEquals(Deno.readTextFileSync(policy), "Undefined", "yours stays");
   } finally {
     Deno.env.delete("CC_STARSHIP_WINPS");
+    s.restore();
+  }
+});
+
+Deno.test("uninstall also removes the start-up caches our programs left in the temp folder", async () => {
+  const s = sandbox();
+  const tmp = join(s.home, "tmp");
+  try {
+    const ours = ["deno-compile-cc-starship.cache", "deno-compile-cc-starship-aarch64-apple-darwin.cache"];
+    for (const f of [...ours, "deno-compile-other.cache"]) Deno.writeTextFileSync(join(tmp, f), "x");
+    await install("rainbow", opts(s));
+    await uninstall();
+    // Removed once this program has exited (it may still write its own cache then).
+    for (let i = 0; i < 40 && ours.some((f) => sha(join(tmp, f)) !== "missing"); i++) {
+      await new Promise((r) => setTimeout(r, 100));
+    }
+    assertEquals([...Deno.readDirSync(tmp)].map((e) => e.name), ["deno-compile-other.cache"]);
+  } finally {
     s.restore();
   }
 });

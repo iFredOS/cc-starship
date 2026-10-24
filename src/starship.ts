@@ -4,6 +4,7 @@
 import { createHash } from "node:crypto";
 import { delimiter, join } from "node:path";
 import { installDir, isWindows, paths } from "./paths.ts";
+import { fetchBytes } from "./net.ts";
 
 export type Manager = "brew" | "winget" | "scoop" | "ours" | "unknown";
 
@@ -132,12 +133,7 @@ export async function downloadStarship(binDir = join(installDir(), "bin")): Prom
   const arch = Deno.build.arch === "aarch64" ? "aarch64" : "x86_64";
   const name = assetName(Deno.build.os === "windows" ? "windows" : "darwin", arch);
   const base = "https://github.com/starship/starship/releases/latest/download/";
-  const get = async (url: string) => {
-    const res = await fetch(url);
-    if (!res.ok) throw new Error(`download ${url}: HTTP ${res.status}`);
-    return new Uint8Array(await res.arrayBuffer());
-  };
-  const [archive, sum] = await Promise.all([get(base + name), get(base + name + ".sha256")]);
+  const [archive, sum] = await Promise.all([fetchBytes(base + name), fetchBytes(base + name + ".sha256")]);
   const expected = new TextDecoder().decode(sum).trim().split(/\s+/)[0].toLowerCase();
   const actual = createHash("sha256").update(archive).digest("hex");
   if (expected !== actual) throw new Error(`checksum mismatch for ${name}`);

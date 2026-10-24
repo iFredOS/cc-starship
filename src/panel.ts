@@ -135,7 +135,7 @@ export function box(
   return [top, ...body, line(`╰${"─".repeat(Math.max(0, width - 2))}╯`)];
 }
 
-const NAME_WIDTH = 13, CELL = NAME_WIDTH + SWATCH_WIDTH + 3;
+const NAME_WIDTH = 14, CELL = NAME_WIDTH + SWATCH_WIDTH + 2;
 
 /** How many columns of looks fit in `width`, and how many rows that makes. */
 export function gridShape(count: number, width: number): { columns: number; rows: number } {
@@ -162,7 +162,7 @@ export function looksGrid(
     let row = "";
     for (let c = 0; c < columns && c * rows + r < presets.length; c++) {
       const text = cell(c * rows + r);
-      row += c < columns - 1 ? text + " ".repeat(Math.max(1, CELL - visibleWidth(text))) : text;
+      row += c < columns - 1 ? text + " ".repeat(Math.max(0, CELL - visibleWidth(text))) : text;
     }
     return row;
   });
