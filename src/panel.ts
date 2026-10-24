@@ -127,12 +127,12 @@ export function box(
   let tail = o.right ? ` ${o.right} ${line("─╮")}` : line("─╮");
   if (visibleWidth(head) + visibleWidth(tail) > width) tail = line("─╮");
   const top = head + line("─".repeat(Math.max(0, width - visibleWidth(head) - visibleWidth(tail)))) + tail;
-  const inner = width - 4;
+  const inner = Math.max(1, width - 4);
   const body = lines.map((l) => {
     const c = clip(l, inner);
-    return `${line("│")} ${c}${" ".repeat(inner - visibleWidth(c))} ${line("│")}`;
+    return `${line("│")} ${c}${" ".repeat(Math.max(0, inner - visibleWidth(c)))} ${line("│")}`;
   });
-  return [top, ...body, line(`╰${"─".repeat(width - 2)}╯`)];
+  return [top, ...body, line(`╰${"─".repeat(Math.max(0, width - 2))}╯`)];
 }
 
 const NAME_WIDTH = 13, CELL = NAME_WIDTH + SWATCH_WIDTH + 3;

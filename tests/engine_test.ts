@@ -5,6 +5,7 @@ import {
   ALL_COMPONENTS,
   install,
   readInstalled,
+  refreshProfilePaths,
   setComponents,
   setPrefs,
   setTheme,
@@ -719,6 +720,10 @@ Deno.test("Windows Terminal font from an older version is brought up to date, pr
     const data = JSON.parse(Deno.readTextFileSync(wt));
     data.profiles.defaults.font.size = 15; // what an older version wrote
     Deno.writeTextFileSync(wt, JSON.stringify(data, null, 4) + "\n");
+    const manifestPath = join(s.installDir, "manifest.json");
+    const manifest = JSON.parse(Deno.readTextFileSync(manifestPath));
+    delete manifest.windowsTerminal.font; // older versions didn't record it
+    Deno.writeTextFileSync(manifestPath, JSON.stringify(manifest));
     await setTheme("ember");
     assertEquals(JSON.parse(Deno.readTextFileSync(wt)).profiles.defaults.font, {
       face: "JetBrainsMono Nerd Font",
@@ -744,6 +749,172 @@ Deno.test("profile paths are found once at install and reused by later switches"
     Deno.writeTextFileSync(statePath, JSON.stringify({ ...state, profilePaths: [other] }));
     await setComponents({ ...ALL_COMPONENTS, memory: true });
     assertStringIncludes(Deno.readTextFileSync(other), "cc-starship memory >>>");
+  } finally {
+    s.restore();
+  }
+});
+
+Deno.test("refreshing an old block: in place, so lines you added after it still win", async () => {
+  const s = sandbox();
+  try {
+    const cmux = join(s.home, "config.ghostty");
+    Deno.writeTextFileSync(cmux, "theme = x\n");
+    Deno.env.set("CC_STARSHIP_TERMINALS", cmux);
+    await install("rainbow", { ...opts(s), components: { ...ALL_COMPONENTS, terminal: true } });
+    const manifestPath = join(s.installDir, "manifest.json");
+    const old = (x: string) => x.replaceAll("font-size = 14", "font-size = 15");
+    Deno.writeTextFileSync(cmux, old(Deno.readTextFileSync(cmux)) + "font-size = 18\n");
+    Deno.writeTextFileSync(manifestPath, old(Deno.readTextFileSync(manifestPath)));
+    await setTheme("ember");
+    const text = Deno.readTextFileSync(cmux);
+    assert(text.indexOf("font-size = 14") < text.indexOf("font-size = 18"), "ours stays before yours");
+    assert(text.trimEnd().endsWith("font-size = 18"), text);
+  } finally {
+    s.restore();
+  }
+});
+
+Deno.test("refreshing an old block you edited: left as is, said so, never doubled", async () => {
+  const s = sandbox();
+  try {
+    const cmux = join(s.home, "config.ghostty");
+    Deno.env.set("CC_STARSHIP_TERMINALS", cmux);
+    await install("rainbow", { ...opts(s), components: { ...ALL_COMPONENTS, terminal: true } });
+    const manifestPath = join(s.installDir, "manifest.json");
+    Deno.writeTextFileSync(
+      manifestPath,
+      Deno.readTextFileSync(manifestPath).replaceAll("font-size = 14", "font-size = 15"),
+    );
+    Deno.writeTextFileSync(cmux, Deno.readTextFileSync(cmux).replace("font-size = 14", "font-size = 16"));
+    const report = await setTheme("ember");
+    const text = Deno.readTextFileSync(cmux);
+    assertEquals(text.match(/cc-starship terminal >>>/g)?.length, 1);
+    assertStringIncludes(text, "font-size = 16");
+    assert(report.some((l) => l.includes("edited")), report.join("\n"));
+  } finally {
+    s.restore();
+  }
+});
+
+Deno.test("settings.json with comments: a look switch changes nothing and says why", async () => {
+  const s = sandbox();
+  try {
+    Deno.writeTextFileSync(s.zshrc, 'eval "$(starship init zsh)"\n');
+    await install("rainbow", { ...opts(s), components: { ...ALL_COMPONENTS, shell: false, usage: false } });
+    Deno.writeTextFileSync(s.settings, Deno.readTextFileSync(s.settings).replace("{", "{\n  // mine"));
+    const files = [s.starship, s.settings, s.zshrc].map(sha);
+    await assertRejects(() => setTheme("ember"), Error, "comments");
+    assertEquals([s.starship, s.settings, s.zshrc].map(sha), files);
+  } finally {
+    s.restore();
+  }
+});
+
+Deno.test("status bar off leaves a status line you set yourself afterwards alone", async () => {
+  const s = sandbox();
+  try {
+    Deno.writeTextFileSync(s.settings, '{"statusLine": {"type": "command", "command": "node old.mjs"}}\n');
+    await install("rainbow", { ...opts(s), components: { ...ALL_COMPONENTS, bar: false } });
+    const data = JSON.parse(Deno.readTextFileSync(s.settings));
+    data.statusLine = { type: "command", command: "my-new-bar" };
+    Deno.writeTextFileSync(s.settings, JSON.stringify(data));
+    await setTheme("ember");
+    assertEquals(JSON.parse(Deno.readTextFileSync(s.settings)).statusLine.command, "my-new-bar");
+    await uninstall();
+    assertEquals(
+      JSON.parse(Deno.readTextFileSync(s.settings)).statusLine?.command,
+      "my-new-bar",
+      "yours wins",
+    );
+  } finally {
+    s.restore();
+  }
+});
+
+Deno.test("a commented-out starship line doesn't count as starting Starship", async () => {
+  const s = sandbox();
+  try {
+    Deno.writeTextFileSync(s.zshrc, '# eval "$(starship init zsh)"\n');
+    await install("rainbow", { ...opts(s), components: { ...ALL_COMPONENTS, memory: false } });
+    assertStringIncludes(
+      Deno.readTextFileSync(s.zshrc),
+      "# >>> cc-starship >>>",
+      "our start-up line was added",
+    );
+    await setComponents({ ...ALL_COMPONENTS, shell: false, usage: false, memory: false });
+    assert(!Deno.readTextFileSync(s.zshrc).includes("prompt off"), "nothing to switch off");
+  } finally {
+    s.restore();
+  }
+});
+
+Deno.test("Windows Terminal: a font you pick later is kept on the next switch", async () => {
+  const s = sandbox();
+  try {
+    const wt = join(s.home, "settings.json.wt.json");
+    Deno.writeTextFileSync(wt, JSON.stringify(wtSettings, null, 4) + "\n");
+    Deno.env.set("CC_STARSHIP_TERMINALS", wt);
+    await install("rainbow", { ...opts(s), components: { ...ALL_COMPONENTS, terminal: true } });
+    const data = JSON.parse(Deno.readTextFileSync(wt));
+    data.profiles.defaults.font = { face: "Hack Nerd Font", size: 12 };
+    Deno.writeTextFileSync(wt, JSON.stringify(data, null, 4) + "\n");
+    await setTheme("ember");
+    assertEquals(JSON.parse(Deno.readTextFileSync(wt)).profiles.defaults.font, {
+      face: "Hack Nerd Font",
+      size: 12,
+    });
+  } finally {
+    s.restore();
+  }
+});
+
+Deno.test("an empty profile list (a failed lookup) is never saved", async () => {
+  const s = sandbox();
+  try {
+    Deno.env.delete("CC_STARSHIP_PROFILES");
+    await install("rainbow", { ...opts(s), components: { ...ALL_COMPONENTS, memory: false } });
+    const statePath = join(s.installDir, "state.json");
+    Deno.writeTextFileSync(
+      statePath,
+      JSON.stringify({ ...JSON.parse(Deno.readTextFileSync(statePath)), profilePaths: [] }),
+    );
+    await setComponents({ ...ALL_COMPONENTS, memory: true });
+    assertStringIncludes(Deno.readTextFileSync(s.zshrc), "cc-starship memory >>>", "found the profile again");
+  } finally {
+    s.restore();
+  }
+});
+
+Deno.test("PowerShell, prompt off, memory on: the plain prompt still saves the last folder", async () => {
+  const s = sandbox();
+  try {
+    const ps1 = join(s.home, "profile.ps1");
+    const original = "Set-Alias ll Get-ChildItem\r\n";
+    Deno.writeTextFileSync(ps1, original);
+    Deno.env.set("CC_STARSHIP_PROFILES", ps1);
+    const off = { ...ALL_COMPONENTS, shell: false, usage: false };
+    await install("rainbow", { ...opts(s), components: off });
+    const text = Deno.readTextFileSync(ps1);
+    assertStringIncludes(text, "cc-starship memory >>>");
+    assertStringIncludes(text, "cc-starship prompt off >>>", "a prompt that calls the folder saver");
+    await setComponents({ ...off, memory: false });
+    assertEquals(Deno.readTextFileSync(ps1), original, "neither block needed any more");
+  } finally {
+    s.restore();
+  }
+});
+
+Deno.test("profile paths are looked up again in the background (a shell installed since is found)", async () => {
+  const s = sandbox();
+  try {
+    Deno.env.delete("CC_STARSHIP_PROFILES");
+    await install("rainbow", { ...opts(s), components: { ...ALL_COMPONENTS, memory: false } });
+    const statePath = join(s.installDir, "state.json");
+    const stale = { ...JSON.parse(Deno.readTextFileSync(statePath)), profilePaths: [join(s.home, "gone")] };
+    Deno.writeTextFileSync(statePath, JSON.stringify(stale));
+    await refreshProfilePaths();
+    assertEquals(readInstalled()?.profilePaths, [s.zshrc]);
+    assertEquals(readInstalled()?.theme, "rainbow", "the rest of the state kept");
   } finally {
     s.restore();
   }

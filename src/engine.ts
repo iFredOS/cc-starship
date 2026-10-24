@@ -59,7 +59,8 @@ interface Manifest {
   promptOff?: ProfileEntry[];
   /** cmux/Ghostty config blocks. */
   terminal?: ProfileEntry[];
-  windowsTerminal?: FileEntry & { fonts: WindowsTerminalPrior };
+  /** `font`: the default font we last wrote (missing in older manifests, which wrote size 15). */
+  windowsTerminal?: FileEntry & { fonts: WindowsTerminalPrior; font?: { face: string; size: number } };
 }
 
 export interface InstallOptions {
@@ -145,6 +146,14 @@ function commandPath(bin: string): string {
 
 const statusLineCommand = (bin: string) => `${commandPath(bin)} statusline`;
 
+/** Our status line: `<cc-starship> statusline`, quoted or not (or under the old name). */
+const isOurStatusLine = (line: unknown, bin: string) => {
+  const command = (line as { command?: unknown } | undefined)?.command;
+  return typeof command === "string" &&
+    (command === statusLineCommand(bin) ||
+      /(cc-starship|starship-statusline)[^"]*"? statusline$/.test(command));
+};
+
 function readSettings(path: string): Record<string, unknown> | null {
   if (!lstat(path)) return null;
   const text = readText(path);
@@ -167,30 +176,48 @@ function readSettings(path: string): Record<string, unknown> | null {
 export function shellProfiles(state?: { profilePaths?: string[] }): string[] {
   const override = Deno.env.get("CC_STARSHIP_PROFILES");
   if (override !== undefined) return override.split(";").filter(Boolean);
-  if (state?.profilePaths) return state.profilePaths;
-  if (!isWindows) {
-    const home = Deno.env.get("HOME")!;
-    const profiles = [join(home, ".zshrc")];
-    if ((Deno.env.get("SHELL") ?? "").endsWith("bash")) profiles.push(join(home, ".bashrc"));
-    return profiles;
-  }
+  if (state?.profilePaths?.length) return state.profilePaths;
+  if (!isWindows) return unixProfiles();
   // Ask each installed PowerShell for its own profile path (Documents may be redirected).
-  const found: string[] = [];
-  for (const exe of ["powershell", "pwsh"]) {
+  return POWERSHELLS.map((exe) => {
     try {
-      const out = new Deno.Command(exe, {
-        args: ["-NoProfile", "-Command", "$PROFILE"],
-        stdout: "piped",
-        stderr: "null",
-      })
-        .outputSync();
-      const path = new TextDecoder().decode(out.stdout).trim();
-      if (out.success && path) found.push(path);
+      return profileFrom(new Deno.Command(exe, PROFILE_QUERY).outputSync());
     } catch {
-      // that PowerShell isn't installed
+      return null; // that PowerShell isn't installed
     }
-  }
-  return found;
+  }).filter((p): p is string => !!p);
+}
+
+const POWERSHELLS = ["powershell", "pwsh"];
+const PROFILE_QUERY: Deno.CommandOptions = {
+  args: ["-NoProfile", "-Command", "$PROFILE"],
+  stdout: "piped",
+  stderr: "null",
+};
+const profileFrom = (out: Deno.CommandOutput) =>
+  out.success ? new TextDecoder().decode(out.stdout).trim() || null : null;
+
+function unixProfiles(): string[] {
+  const profiles = [join(Deno.env.get("HOME")!, ".zshrc")];
+  if ((Deno.env.get("SHELL") ?? "").endsWith("bash")) profiles.push(join(Deno.env.get("HOME")!, ".bashrc"));
+  return profiles;
+}
+
+/**
+ * Looks the profiles up again without blocking (the panel does this as it opens), so a
+ * PowerShell installed since install is found by the next switch.
+ */
+export async function refreshProfilePaths(): Promise<void> {
+  if (Deno.env.get("CC_STARSHIP_PROFILES") !== undefined) return;
+  const found = isWindows
+    ? (await Promise.all(
+      POWERSHELLS.map((exe) => new Deno.Command(exe, PROFILE_QUERY).output().then(profileFrom, () => null)),
+    )).filter((p): p is string => !!p)
+    : unixProfiles();
+  // Read the state only now: a switch made meanwhile is kept.
+  const state = readState() as InstalledState | null;
+  if (!state || !found.length || canonical(found) === canonical(state.profilePaths ?? [])) return;
+  writeText(paths.state(), JSON.stringify({ ...state, profilePaths: found }, null, 2) + "\n");
 }
 
 function initLine(profile: string, starship: string): string {
@@ -222,7 +249,7 @@ function appendBlock(
 
 function hookProfile(profile: string, starship: string, ours: boolean): ProfileEntry | null {
   const text = lstat(profile) ? readText(profile) : "";
-  if (STARTS_STARSHIP.test(text)) return null; // already starts Starship
+  if (startsStarship(text)) return null; // already starts Starship
   return appendBlock(profile, [initLine(profile, starship)], MARK_START, MARK_END, ours);
 }
 
@@ -259,6 +286,9 @@ const allBlocks = (m: Manifest) => [
   ...(m.terminal ?? []),
 ];
 const STARTS_STARSHIP = /starship(\.exe)?['"]?\s+init/;
+/** A line, not commented out, that starts Starship. */
+const startsStarship = (text: string) =>
+  text.split(/\r?\n/).some((l) => !/^\s*#/.test(l) && STARTS_STARSHIP.test(l));
 
 // ── Components ───────────────────────────────────────────────────────────
 
@@ -357,13 +387,26 @@ function shellKind(profile: string): "zsh" | "powershell" | null {
   return basename(profile).includes("zsh") ? "zsh" : null;
 }
 
-/** Shell prompt off: profiles that still start Starship on their own get the shell's prompt back. */
-function addPromptOff(state: InstalledState, manifest: Manifest, report: string[]): void {
-  manifest.promptOff ??= [];
-  for (const profile of shellProfiles(state)) {
+/**
+ * Shell prompt off: profiles that still start Starship on their own get the shell's prompt back.
+ * So do PowerShell profiles with shell memory, whose prompt is what saves the last folder.
+ */
+function syncPromptOff(state: InstalledState, manifest: Manifest, report: string[]): void {
+  const needs = (profile: string) => {
     const kind = shellKind(profile);
+    if (!kind || !lstat(profile)) return null;
+    const text = readText(profile);
+    return startsStarship(text) || (kind === "powershell" && state.components.memory) ? kind : null;
+  };
+  const profiles = shellProfiles(state);
+  manifest.promptOff = (manifest.promptOff ?? []).filter((entry) => {
+    if (profiles.includes(entry.path) && needs(entry.path)) return true;
+    report.push(unhookProfile(entry, allBlocks(manifest)));
+    return false;
+  });
+  for (const profile of profiles) {
+    const kind = needs(profile);
     if (!kind || manifest.promptOff.some((e) => e.path === profile)) continue;
-    if (!lstat(profile) || !STARTS_STARSHIP.test(readText(profile))) continue;
     const lines = promptOffBlock(kind).trimEnd().split("\n");
     manifest.promptOff.push(appendBlock(profile, lines, PROMPT_OFF_START, PROMPT_OFF_END, false));
     report.push(`${profile}: ${kind === "zsh" ? "zsh" : "PowerShell"}'s own prompt in new tabs`);
@@ -376,9 +419,9 @@ function removePromptOff(manifest: Manifest, report: string[]): void {
 }
 
 /**
- * Makes `list` hold one block in `file` with exactly `lines`: kept when it already does,
- * otherwise (a first install, or a block an older version wrote) written anew.
- * Returns false when nothing changed.
+ * Makes `list` hold one block in `file` with exactly `lines`. A block an older version wrote
+ * is replaced where it is, so lines you added after it still come later. One you edited is
+ * left alone. Returns what happened.
  */
 function ensureBlock(
   manifest: Manifest,
@@ -386,18 +429,32 @@ function ensureBlock(
   file: string,
   lines: string[],
   [start, end]: [string, string],
-): boolean {
+): "same" | "written" | "edited" {
   const at = list.findIndex((e) => e.path === file);
   const wanted = [start, ...lines, end].join("\n") + "\n";
-  if (at >= 0 && list[at].block.replace(/^\r?\n/, "").replaceAll("\r\n", "\n") === wanted) return false;
-  let ours = createdByUs(manifest, file);
-  if (at >= 0) {
-    ours ||= list[at].created;
-    unhookProfile(list[at], allBlocks(manifest));
-    list.splice(at, 1);
+  const old = list[at];
+  if (old && old.block.replace(/^\r?\n/, "").replaceAll("\r\n", "\n") === wanted) return "same";
+  if (old && lstat(file)) {
+    const text = readText(file);
+    const pos = text.lastIndexOf(old.block);
+    if (pos < 0) return "edited";
+    const eol = text.includes("\r\n") ? "\r\n" : "\n";
+    const block = (/^\r?\n/.exec(old.block)?.[0] ?? "") + wanted.replaceAll("\n", eol);
+    writeText(file, text.slice(0, pos) + block + text.slice(pos + old.block.length));
+    old.block = block;
+    return "written";
   }
+  const ours = createdByUs(manifest, file) || (old?.created ?? false);
+  if (old) list.splice(at, 1);
   list.push(appendBlock(file, lines, start, end, ours));
-  return true;
+  return "written";
+}
+
+/** The report line for `ensureBlock`'s result, or none when nothing changed. */
+function blockReport(result: ReturnType<typeof ensureBlock>, file: string, what: string): string[] {
+  if (result === "same") return [];
+  if (result === "edited") return [`${file}: you edited the cc-starship block, so it was left as is`];
+  return [`${file}: ${what}`];
 }
 
 function addMemory(state: InstalledState, manifest: Manifest, report: string[]): void {
@@ -411,9 +468,13 @@ function addMemory(state: InstalledState, manifest: Manifest, report: string[]):
       continue;
     }
     const lines = memoryBlock(kind, paths.lastdir()).trimEnd().split("\n");
-    if (ensureBlock(manifest, manifest.memory, profile, lines, [MEMORY_START, MEMORY_END])) {
-      report.push(`${profile}: new tabs open in your last folder; history without duplicates`);
-    }
+    report.push(
+      ...blockReport(
+        ensureBlock(manifest, manifest.memory, profile, lines, [MEMORY_START, MEMORY_END]),
+        profile,
+        "new tabs open in your last folder; history without duplicates",
+      ),
+    );
   }
 }
 
@@ -434,18 +495,26 @@ function addTerminal(manifest: Manifest, report: string[]): void {
   manifest.terminal ??= [];
   for (const file of terminalFiles()) {
     if (file.endsWith(".json")) {
-      if (manifest.windowsTerminal) {
-        // Already set up: only bring the default font up to date (an older version may have
-        // used another size); the fonts recorded at install stay as they were.
+      const wt = manifest.windowsTerminal;
+      if (wt) {
+        // Already set up: bring the default font up to date (an older version used size 15),
+        // but only while it is still the one we wrote; a font you picked since stays.
         const data = parseJson(file) as
           | { profiles?: { defaults?: { font?: Record<string, unknown> } } }
           | null;
         const font = data?.profiles?.defaults?.font;
-        if (data && font && (font.face !== TERMINAL_FONT || font.size !== TERMINAL_SIZE)) {
+        const ours = wt.font ?? { face: TERMINAL_FONT, size: 15 };
+        if (
+          data && font && font.face === ours.face && font.size === ours.size &&
+          (font.face !== TERMINAL_FONT || font.size !== TERMINAL_SIZE)
+        ) {
           Object.assign(font, { face: TERMINAL_FONT, size: TERMINAL_SIZE });
-          manifest.windowsTerminal.written = writeOwned(file, JSON.stringify(data, null, 4) + "\n");
+          wt.written = writeOwned(file, JSON.stringify(data, null, 4) + "\n");
           report.push(`${file}: ${TERMINAL_FONT} ${TERMINAL_SIZE} for every profile`);
         }
+        wt.font = data && font && font.face === TERMINAL_FONT && font.size === TERMINAL_SIZE
+          ? { face: TERMINAL_FONT, size: TERMINAL_SIZE }
+          : ours;
         continue;
       }
       const data = parseJson(file);
@@ -456,12 +525,17 @@ function addTerminal(manifest: Manifest, report: string[]): void {
       const prior = recordPrior(file, "windows-terminal-settings.json");
       const fonts = applyWindowsTerminal(data);
       const written = writeOwned(file, JSON.stringify(data, null, 4) + "\n");
-      manifest.windowsTerminal = { path: file, prior, written, fonts };
+      const font = { face: TERMINAL_FONT, size: TERMINAL_SIZE };
+      manifest.windowsTerminal = { path: file, prior, written, fonts, font };
       report.push(`${file}: ${TERMINAL_FONT} ${TERMINAL_SIZE} for every profile`);
-    } else if (
-      ensureBlock(manifest, manifest.terminal, file, GHOSTTY_LINES, [TERMINAL_START, TERMINAL_END])
-    ) {
-      report.push(`${file}: ${TERMINAL_FONT} ${TERMINAL_SIZE}, Option key as Alt`);
+    } else {
+      report.push(
+        ...blockReport(
+          ensureBlock(manifest, manifest.terminal, file, GHOSTTY_LINES, [TERMINAL_START, TERMINAL_END]),
+          file,
+          `${TERMINAL_FONT} ${TERMINAL_SIZE}, Option key as Alt`,
+        ),
+      );
     }
   }
 }
@@ -568,8 +642,12 @@ function syncSettings(state: InstalledState, manifest: Manifest, report: string[
       padding: 0,
       refreshInterval: 60,
     };
-  } else {
+  } else if (
+    isOurStatusLine(data.statusLine, state.bin) ||
+    canonical(data.statusLine) === canonical(manifest.settings.priorStatusLine)
+  ) {
     // Off means no status bar, not the one set before install (uninstall puts that back).
+    // One you set yourself since then stays.
     delete data.statusLine;
   }
   setUsageHook(data, state.bin, hook);
@@ -591,8 +669,11 @@ function removeSettings(manifest: Manifest, report: string[], bin = ""): void {
   // Put back only what we set; anything else changed since install (by you, or merged
   // into our later writes) stays.
   const data = readSettings(entry.path) ?? {};
-  if (entry.hadStatusLine) data.statusLine = entry.priorStatusLine;
-  else delete data.statusLine;
+  // A status line you set yourself since install stays; ours (or none) gives way to yours from before.
+  if (!("statusLine" in data) || isOurStatusLine(data.statusLine, bin)) {
+    if (entry.hadStatusLine) data.statusLine = entry.priorStatusLine;
+    else delete data.statusLine;
+  }
   setUsageHook(data, bin, false);
   report.push(`${entry.path}: ${putBackJson(entry, data, 2)}`);
   delete manifest.settings;
@@ -601,7 +682,12 @@ function removeSettings(manifest: Manifest, report: string[], bin = ""): void {
 /** Brings the files in line with `state`: its preset, and each component on or off. */
 function apply(state: InstalledState, manifest: Manifest, report: string[]): void {
   const p = preset(state.theme);
-  if (Deno.env.get("CC_STARSHIP_PROFILES") === undefined) state.profilePaths ??= shellProfiles();
+  if (Deno.env.get("CC_STARSHIP_PROFILES") === undefined && !state.profilePaths?.length) {
+    // An empty list means the lookup failed (PowerShell slow to answer…): ask again next time.
+    const found = shellProfiles();
+    if (found.length) state.profilePaths = found;
+    else delete state.profilePaths;
+  }
   writeText(paths.barConfig(), barConfig(p));
   writeText(paths.state(), JSON.stringify(state, null, 2) + "\n");
   if (state.components.shell) {
@@ -609,11 +695,12 @@ function apply(state: InstalledState, manifest: Manifest, report: string[]): voi
     addShell(p, state, manifest, report);
   } else {
     removeShell(manifest, report);
-    addPromptOff(state, manifest, report);
   }
   syncSettings(state, manifest, report);
   if (state.components.memory) addMemory(state, manifest, report);
   else removeMemory(manifest, report);
+  // After memory: which profiles need the prompt-off block depends on it.
+  if (!state.components.shell) syncPromptOff(state, manifest, report);
   if (state.components.terminal) addTerminal(manifest, report);
   else removeTerminal(manifest, report);
   saveManifest(manifest);

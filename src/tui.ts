@@ -9,6 +9,7 @@ import {
   ALL_COMPONENTS,
   type Components,
   readInstalled,
+  refreshProfilePaths,
   setComponents,
   setPrefs,
   setTheme,
@@ -28,7 +29,18 @@ import { isWindows, paths } from "./paths.ts";
 import { TERMINAL_FONT, TERMINAL_SIZE } from "./terminal.ts";
 import { allPresets, DEFAULT_PRESET, findPreset, type Preset } from "./presets.ts";
 import { gitStatus } from "./statusline.ts";
-import { box, fitView, gridShape, header, keys, looksGrid, paint, type Theme, themeOf } from "./panel.ts";
+import {
+  box,
+  clip,
+  fitView,
+  gridShape,
+  header,
+  keys,
+  looksGrid,
+  paint,
+  type Theme,
+  themeOf,
+} from "./panel.ts";
 import {
   DEFAULT_HOOK_FROM,
   DEFAULT_PREFS,
@@ -207,10 +219,10 @@ type Key =
   | "other";
 
 function parseKey(s: string): Key {
-  if (s === `${ESC}[A` || s === "k" || s === "w") return "up";
-  if (s === `${ESC}[B` || s === "j" || s === "s") return "down";
-  if (s === `${ESC}[D` || s === "h") return "left";
-  if (s === `${ESC}[C` || s === "l") return "right";
+  if (s === `${ESC}[A` || s === `${ESC}OA` || s === "k" || s === "w") return "up";
+  if (s === `${ESC}[B` || s === `${ESC}OB` || s === "j" || s === "s") return "down";
+  if (s === `${ESC}[D` || s === `${ESC}OD` || s === "h") return "left";
+  if (s === `${ESC}[C` || s === `${ESC}OC` || s === "l") return "right";
   if (s === "\r" || s === "\n" || s === "\r\n") return "enter";
   if (s === ESC) return "back";
   if (s === "q" || s === "Q" || s === "\x03") return "quit";
@@ -226,8 +238,10 @@ function parseKey(s: string): Key {
 
 /** Every key in one read: a held arrow key or fast typing arrives several at a time. */
 export function parseKeys(bytes: Uint8Array): Key[] {
+  // Esc followed by another character is Alt/Option+that key, one key; Esc Esc is two.
   // deno-lint-ignore no-control-regex -- escape sequences
-  const tokens = new TextDecoder().decode(bytes).match(/\x1b\[[0-9;]*[A-Za-z~]|\x1bO.|\r\n|[\s\S]/g) ?? [];
+  const KEY = /\x1b\[[0-9;]*[A-Za-z~]|\x1bO.|\x1b[^[O\x1b]|\r\n|[\s\S]/g;
+  const tokens = new TextDecoder().decode(bytes).match(KEY) ?? [];
   return tokens.map(parseKey);
 }
 
@@ -268,6 +282,8 @@ export async function runUi(): Promise<number> {
   // Previews render in the background, so arrow keys never wait: both Starship runs of a
   // preview at once, one git status for all looks, always the look nearest the cursor next.
   const git = gitStatus(Deno.cwd());
+  // One folder for every preview's files, removed when the panel closes.
+  const previewRoot = Deno.makeTempDirSync({ prefix: "cc-starship-panel-" });
   const previews = new Map<string, string[]>();
   let generation = 0;
   let idle = false; // waiting for a key: safe to redraw when a preview arrives
@@ -280,11 +296,14 @@ export async function runUi(): Promise<number> {
         .sort((a, b) => a.distance - b.distance)
         .find(({ p }) => !previews.has(p.id))?.p;
       if (!next) return;
-      const lines = await previewLinesAsync(next, info?.path ?? "starship", resolvePrefs(prefs), git)
-        .catch(() => [] as string[]);
+      const lines = await previewLinesAsync(next, info?.path ?? "starship", {
+        prefs: resolvePrefs(prefs),
+        git,
+        root: previewRoot,
+      }).catch(() => [] as string[]);
       if (gen !== generation) return;
       previews.set(next.id, lines);
-      if (idle && screen === "looks" && presets[index].id === next.id) draw();
+      if (screen === "looks" && presets[index].id === next.id) redraw();
     }
   };
   const preview = (p: Preset) => previews.get(p.id);
@@ -304,6 +323,13 @@ export async function runUi(): Promise<number> {
     const ready = [...previews.values()].find((l) => l.length);
     const rows = ready ? previewBlock(ready, { explain }).length : 1;
     return [paint(t.dim, "rendering the preview…"), ...Array(Math.max(0, rows - 1)).fill("")];
+  };
+  const columns = () => {
+    try {
+      return Deno.consoleSize().columns;
+    } catch {
+      return 100;
+    }
   };
   const height = () => {
     try {
@@ -424,7 +450,18 @@ export async function runUi(): Promise<number> {
         () => [...top(false), ...componentsScreen({ roomy: false })],
       ]
       : [() => [...top(true), ...fontsScreen()]];
-    write(`${ESC}[H${ESC}[2J${fitView(layouts, height()).join("\r\n")}`);
+    // Cut to the window (one column spare): a line that wraps would push the top away.
+    const lines = fitView(layouts, height()).map((l) => clip(l, columns() - 1));
+    write(`${ESC}[H${ESC}[2J${lines.join("\r\n")}`);
+  };
+  /** A redraw from a background task: only while waiting for a key, and never fatal. */
+  const redraw = () => {
+    if (!idle) return;
+    try {
+      draw();
+    } catch {
+      // the panel is closing
+    }
   };
 
   const prompt = async (text: string) => {
@@ -449,6 +486,17 @@ export async function runUi(): Promise<number> {
     state = readInstalled();
   };
 
+  /** Runs a change; when it fails (settings.json with comments…), says why and returns false. */
+  const saved = async (change: () => Promise<unknown>) => {
+    try {
+      await change();
+      return true;
+    } catch (e) {
+      message = yellow(e instanceof Error ? e.message : String(e));
+      return false;
+    }
+  };
+
   const toggle = async (key: Toggle) => {
     const next = { ...components, [key]: !components[key] };
     if (key === "usage" && next.usage) next.shell = true;
@@ -462,12 +510,9 @@ export async function runUi(): Promise<number> {
       components = next;
       return;
     }
-    try {
-      await setComponents(next);
+    if (await saved(() => setComponents(next))) {
       components = next;
       message = green("✓ Saved: open a new terminal tab; Claude Code updates within a minute.");
-    } catch (e) {
-      message = yellow(e instanceof Error ? e.message : String(e));
     }
   };
 
@@ -479,14 +524,14 @@ export async function runUi(): Promise<number> {
     if (key === "space" && name === "hookFrom") {
       const i = HOOK_FROM_CHOICES.indexOf((prefs.hookFrom ?? DEFAULT_HOOK_FROM) as 0);
       const next = { ...prefs, hookFrom: HOOK_FROM_CHOICES[(i + 1) % HOOK_FROM_CHOICES.length] };
-      if (state) await setPrefs(next);
+      if (state && !(await saved(() => setPrefs(next)))) return;
       prefs = next;
     }
     if (key === "space" && (name === "language" || name === "clock")) {
       const next = name === "language"
         ? { ...prefs, language: LANGUAGES[(LANGUAGES.indexOf(prefs.language) + 1) % LANGUAGES.length] }
         : { ...prefs, clock: CLOCKS[(CLOCKS.indexOf(prefs.clock) + 1) % CLOCKS.length] };
-      if (state) await setPrefs(next);
+      if (state && !(await saved(() => setPrefs(next)))) return;
       prefs = next;
       warm();
     }
@@ -564,7 +609,7 @@ export async function runUi(): Promise<number> {
     if (key === "enter") {
       const p = presets[index];
       if (state) {
-        await setTheme(p.id);
+        if (!(await saved(() => setTheme(p.id)))) return;
         state = readInstalled();
         message = green(`✓ ${p.name} is on: open a new terminal tab; Claude Code updates within a minute.`);
       } else {
@@ -584,8 +629,9 @@ export async function runUi(): Promise<number> {
 
   write(`${ESC}[?1049h${ESC}[?25l`);
   Deno.stdin.setRaw(true);
-  latestVersion().then((v) => (latest = v), () => (latest = null)).then(() => idle && draw());
+  latestVersion().then((v) => (latest = v), () => (latest = null)).then(redraw);
   warm();
+  if (state) refreshProfilePaths().catch(() => {});
   /** Handles one key; true when the panel should close. */
   const handle = async (key: Key): Promise<boolean> => {
     // Read through a function: the switch to "fonts" happens in callbacks TS can't follow.
@@ -620,10 +666,10 @@ export async function runUi(): Promise<number> {
   try {
     while (true) {
       draw();
-      message = "";
       idle = true;
       const keys = await readKeys();
       idle = false;
+      message = ""; // shown until the next key
       for (const key of keys) if (await handle(key)) return 0;
     }
   } finally {
@@ -633,5 +679,10 @@ export async function runUi(): Promise<number> {
       // not a terminal any more
     }
     write(`${ESC}[?25h${ESC}[?1049l`);
+    try {
+      Deno.removeSync(previewRoot, { recursive: true });
+    } catch {
+      // a preview still finishing; the system cleans its temp folder
+    }
   }
 }

@@ -125,3 +125,11 @@ Deno.test("keys: several in one read (a held arrow key, fast typing) are all han
   assertEquals(parseKeys(enc("\r\n")), ["enter"]);
   assertEquals(parseKeys(enc("\t")), ["tab"]);
 });
+
+Deno.test("keys: Option/Alt+letter is one key, not Esc (which would close the panel)", () => {
+  const enc = (s: string) => new TextEncoder().encode(s);
+  assertEquals(parseKeys(enc("\x1bj")), ["other"]);
+  assertEquals(parseKeys(enc("\x1bq\x1b[B")), ["other", "down"]);
+  assertEquals(parseKeys(enc("\x1bOA\x1bOB")), ["up", "down"], "arrows in application cursor mode");
+  assertEquals(parseKeys(enc("\x1b\x1b")), ["back", "back"]);
+});

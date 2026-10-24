@@ -82,7 +82,6 @@ Deno.test("clean names: a version only when the same look has another version", 
 Deno.test("previews render asynchronously, both Starship runs at once, same lines as before", async () => {
   const { previewLines, previewLinesAsync } = await import("../src/app.ts");
   const p = findPreset("ember")!;
-  const strip = (l: string[]) =>
-    l.map((s) => s.replace(/\x1b\[[0-9;]*m/g, "").replace(/\d+:\d+ ?[AP]M|\d+ h \d*/g, "T"));
+  const strip = (l: string[]) => l.map((s) => stripAnsi(s).replace(/\d+:\d+ ?[AP]M|\d+ h \d*/g, "T"));
   assertEquals(strip(await previewLinesAsync(p, "starship")), strip(previewLines(p, "starship")));
 });

@@ -93,3 +93,10 @@ Deno.test("fitView: the first layout that fits the window; never the top cut off
   assertEquals(tiny.length, 10);
   assertEquals(tiny[0], "compact0", "the top line always shows");
 });
+
+Deno.test("tiny windows: boxes and the header never throw", () => {
+  for (const width of [0, 1, 4, 6, 10]) {
+    box("Choose a look", ["x"], { width, theme });
+    header({ theme, screen: "looks", version: "1.0.0", width });
+  }
+});

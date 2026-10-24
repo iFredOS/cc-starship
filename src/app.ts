@@ -92,8 +92,14 @@ export async function doInstall(
 type PreviewPrefs = { language: Language; clock: Clock };
 
 /** The two Starship runs of a preview (status bar, shell prompt), set up in a temporary folder. */
-function previewCommands(preset: Preset, starship: string, prefs?: PreviewPrefs, git?: GitStatus) {
-  const dir = Deno.makeTempDirSync({ prefix: "cc-starship-preview-" });
+/** The two Starship runs of a preview, set up in `dir` (a fresh folder the caller removes). */
+function previewCommands(
+  preset: Preset,
+  starship: string,
+  dir: string,
+  prefs?: PreviewPrefs,
+  git?: GitStatus,
+) {
   const bar = join(dir, "bar.toml"), shell = join(dir, "shell.toml");
   Deno.writeTextFileSync(bar, barConfig(preset));
   Deno.writeTextFileSync(shell, shellConfig(preset, Deno.execPath()));
@@ -122,7 +128,7 @@ function previewCommands(preset: Preset, starship: string, prefs?: PreviewPrefs,
       : "";
     return [...barOutput(barOut, fallback).trimEnd().split("\n"), promptLine ?? ""];
   };
-  return { dir, bar: command, prompt, lines };
+  return { bar: command, prompt, lines };
 }
 
 /** The preset's status bar (from a sample session) and shell prompt, as ANSI text. */
@@ -131,7 +137,7 @@ export function previewLines(
   starship = readState()?.starship ?? "starship",
   prefs?: PreviewPrefs,
 ): string[] {
-  const p = previewCommands(preset, starship, prefs);
+  const dir = Deno.makeTempDirSync({ prefix: "cc-starship-preview-" });
   const run = (c: Deno.Command) => {
     try {
       return c.outputSync();
@@ -140,9 +146,10 @@ export function previewLines(
     }
   };
   try {
+    const p = previewCommands(preset, starship, dir, prefs);
     return p.lines(run(p.bar), run(p.prompt));
   } finally {
-    Deno.removeSync(p.dir, { recursive: true });
+    Deno.removeSync(dir, { recursive: true });
   }
 }
 
@@ -150,18 +157,20 @@ export function previewLines(
 export async function previewLinesAsync(
   preset: Preset,
   starship: string,
-  prefs?: PreviewPrefs,
-  git?: GitStatus,
+  o: { prefs?: PreviewPrefs; git?: GitStatus; root?: string } = {},
 ): Promise<string[]> {
-  const p = previewCommands(preset, starship, prefs, git);
+  // Inside `root` when given: the panel removes that one folder on exit, even if a preview
+  // is still running then.
+  const dir = await Deno.makeTempDir({ prefix: "cc-starship-preview-", dir: o.root });
   try {
+    const p = previewCommands(preset, starship, dir, o.prefs, o.git);
     const [bar, prompt] = await Promise.all([
       p.bar.output().catch(() => null),
       p.prompt.output().catch(() => null),
     ]);
     return p.lines(bar, prompt);
   } finally {
-    await Deno.remove(p.dir, { recursive: true });
+    await Deno.remove(dir, { recursive: true }).catch(() => {});
   }
 }
 
