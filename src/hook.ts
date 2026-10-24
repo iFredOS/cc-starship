@@ -21,10 +21,10 @@ interface Snapshot {
 }
 
 /**
- * What the hook costs: its line (~40 tokens) plus Claude Code's wrapper, added to
+ * What the hook costs: its line (~150 characters, ~45 tokens) plus Claude Code's wrapper, added to
  * the context of every prompt. Shown before the hook is switched on.
  */
-export const HOOK_COST = "about 60 tokens per prompt";
+export const HOOK_COST = "about 70 tokens per prompt it speaks up on";
 
 /** The snapshot file for a session; anything but letters, digits, `-` and `_` is dropped. */
 export function snapshotFile(dir: string, sessionId: string): string {
