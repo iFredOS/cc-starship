@@ -96,7 +96,7 @@ Gray, Neon, Ice, Ember, Tokyo Night. The status bar and the prompt always change
 | Line | Shows |
 |---|---|
 | 1 | model · effort level · Claude Code version · signed-in account |
-| 2 | folder · branch or worktree (↑ ahead, ↓ behind, `*` uncommitted) · lines added/removed · session time |
+| 2 | folder · branch or worktree (↑ ahead, ↓ behind, `*` uncommitted, `󰙅 2 more` when the repo has other worktrees) · lines added/removed · session time |
 | 3 | context used, tokens and cost · 5-hour limit · 7-day limit, each with its reset time |
 
 Reset times read naturally: today shows the time (`2:38 AM`), another day this week its weekday
