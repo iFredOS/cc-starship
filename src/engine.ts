@@ -2,9 +2,9 @@
 // file it touches in manifest.json (never overwritten by a later install), so
 // uninstall can put each one back byte for byte.
 import { createHash } from "node:crypto";
-import { basename, dirname, extname, join } from "node:path";
-import { installDir, isWindows, paths, readState, type State } from "./paths.ts";
-import { memoryBlock } from "./memory.ts";
+import { basename, dirname, extname, join, resolve } from "node:path";
+import { installDir, isWindows, legacyInstallDir, paths, readState, type State } from "./paths.ts";
+import { memoryBlock, psQuote, zshQuote } from "./memory.ts";
 import {
   applyWindowsTerminal,
   GHOSTTY_LINES,
@@ -132,10 +132,14 @@ function currentSha(path: string): string | null {
 
 // ── Claude Code settings ─────────────────────────────────────────────────
 
-function statusLineCommand(bin: string): string {
-  // Quoted for paths with spaces; forward slashes work in every Windows shell.
-  return `${JSON.stringify(bin.replaceAll("\\", "/"))} statusline`;
+/** The binary as a command word: forward slashes work in every Windows shell, and quotes
+ * only when needed (PowerShell, which Claude Code may use for hooks, can't run a quoted path). */
+function commandPath(bin: string): string {
+  const path = bin.replaceAll("\\", "/");
+  return /\s/.test(path) ? JSON.stringify(path) : path;
 }
+
+const statusLineCommand = (bin: string) => `${commandPath(bin)} statusline`;
 
 function readSettings(path: string): Record<string, unknown> | null {
   if (!lstat(path)) return null;
@@ -182,10 +186,10 @@ export function shellProfiles(): string[] {
 
 function initLine(profile: string, starship: string): string {
   if (extname(profile).toLowerCase() === ".ps1") {
-    return `Invoke-Expression (& '${starship}' init powershell | Out-String)`;
+    return `Invoke-Expression (& ${psQuote(starship)} init powershell | Out-String)`;
   }
   const shell = basename(profile).includes("bash") ? "bash" : "zsh";
-  const exe = starship === "starship" ? "starship" : `'${starship}'`;
+  const exe = starship === "starship" ? "starship" : zshQuote(starship);
   return `eval "$(${exe} init ${shell})"`;
 }
 
@@ -217,12 +221,20 @@ function hookProfile(profile: string, starship: string, ours: boolean): ProfileE
 const createdByUs = (m: Manifest, path: string) =>
   [...m.profiles, ...(m.memory ?? [])].some((e) => e.path === path && e.created);
 
-function unhookProfile(entry: ProfileEntry): string {
+/** Removes `entry`'s block; `all` are the other blocks, which may need the line break it carried. */
+function unhookProfile(entry: ProfileEntry, all: ProfileEntry[]): string {
   if (!lstat(entry.path)) return `${entry.path}: already gone`;
   const text = readText(entry.path);
   const at = text.lastIndexOf(entry.block);
   if (at < 0) return `${entry.path}: the cc-starship block was edited; remove it yourself`;
-  const rest = text.slice(0, at) + text.slice(at + entry.block.length);
+  const after = text.slice(at + entry.block.length);
+  // A block appended to a profile without a final newline starts with one. If text follows,
+  // that newline stays (or the lines would join), and the block after it now owns it.
+  const lead = /^\r?\n/.exec(entry.block)?.[0] ?? "";
+  const keep = lead && after ? lead : "";
+  const next = keep && all.find((e) => e !== entry && e.path === entry.path && after.startsWith(e.block));
+  if (next) next.block = keep + next.block;
+  const rest = text.slice(0, at) + keep + after;
   if (entry.created && rest.replace(/^\uFEFF/, "").trim() === "") {
     Deno.removeSync(entry.path);
     return `${entry.path}: removed (the installer created it)`;
@@ -230,6 +242,8 @@ function unhookProfile(entry: ProfileEntry): string {
   writeText(entry.path, rest);
   return `${entry.path}: removed the cc-starship block`;
 }
+
+const allBlocks = (m: Manifest) => [...m.profiles, ...(m.memory ?? []), ...(m.terminal ?? [])];
 
 // ── Components ───────────────────────────────────────────────────────────
 
@@ -317,7 +331,7 @@ function removeShell(manifest: Manifest, report: string[]): void {
     report.push(`${entry.path}: restored`);
     delete manifest.starshipConfig;
   }
-  for (const profile of manifest.profiles) report.push(unhookProfile(profile));
+  for (const profile of manifest.profiles) report.push(unhookProfile(profile, allBlocks(manifest)));
   manifest.profiles = [];
 }
 
@@ -344,7 +358,7 @@ function addMemory(manifest: Manifest, report: string[]): void {
 }
 
 function removeMemory(manifest: Manifest, report: string[]): void {
-  for (const entry of manifest.memory ?? []) report.push(unhookProfile(entry));
+  for (const entry of manifest.memory ?? []) report.push(unhookProfile(entry, allBlocks(manifest)));
   delete manifest.memory;
 }
 
@@ -399,7 +413,7 @@ function putBackJson(entry: FileEntry, data: Record<string, unknown>, indent: nu
     ? parseJson(entry.prior.backup)
     : entry.prior.kind === "missing"
     ? {}
-    : null;
+    : parseJson(resolve(dirname(entry.path), entry.prior.target));
   if (before && canonical(before) === canonical(data)) {
     restorePrior(entry.path, entry.prior);
     return "restored";
@@ -409,7 +423,7 @@ function putBackJson(entry: FileEntry, data: Record<string, unknown>, indent: nu
 }
 
 function removeTerminal(manifest: Manifest, report: string[]): void {
-  for (const entry of manifest.terminal ?? []) report.push(unhookProfile(entry));
+  for (const entry of manifest.terminal ?? []) report.push(unhookProfile(entry, allBlocks(manifest)));
   delete manifest.terminal;
   const wt = manifest.windowsTerminal;
   if (wt) {
@@ -426,23 +440,24 @@ function removeTerminal(manifest: Manifest, report: string[]): void {
   }
 }
 
-function hookCommand(bin: string): string {
-  return `${JSON.stringify(bin.replaceAll("\\", "/"))} hook`;
-}
+const hookCommand = (bin: string) => `${commandPath(bin)} hook`;
 
 type HookGroup = { matcher?: string; hooks?: { command?: string }[] };
 
-/** Our UserPromptSubmit group: any that runs `<cc-starship> hook` (or the old starship-statusline name). */
-function isOurHook(group: HookGroup, bin: string): boolean {
-  return (group.hooks ?? []).some((h) =>
-    h.command === hookCommand(bin) || /(cc-starship|starship-statusline)[^"]*" hook$/.test(h.command ?? "")
-  );
-}
+/** Our hook: `<cc-starship> hook`, quoted or not (or under the old starship-statusline name). */
+const isOurHook = (h: { command?: string }, bin: string) =>
+  h.command === hookCommand(bin) || /(cc-starship|starship-statusline)[^"]*"? hook$/.test(h.command ?? "");
 
 /** `data` with our usage hook added (or taken out), leaving every other hook alone. */
 function setUsageHook(data: Record<string, unknown>, bin: string, on: boolean): void {
   const hooks = (data.hooks ?? {}) as Record<string, HookGroup[]>;
-  const groups = (hooks.UserPromptSubmit ?? []).filter((g) => !isOurHook(g, bin));
+  // Take out only our hook; a group keeps any hooks of yours that share it.
+  const groups: HookGroup[] = [];
+  for (const g of hooks.UserPromptSubmit ?? []) {
+    const kept = (g.hooks ?? []).filter((h) => !isOurHook(h, bin));
+    if (kept.length === (g.hooks ?? []).length) groups.push(g);
+    else if (kept.length) groups.push({ ...g, hooks: kept });
+  }
   if (on) groups.push({ hooks: [{ type: "command", command: hookCommand(bin) } as { command: string }] });
   if (groups.length) hooks.UserPromptSubmit = groups;
   else delete hooks.UserPromptSubmit;
@@ -514,6 +529,13 @@ export async function install(
   o: InstallOptions & { components?: Components; prefs?: Prefs },
 ): Promise<string[]> {
   preset(presetId);
+  const legacy = legacyInstallDir();
+  if (legacy !== installDir() && lstat(join(legacy, "manifest.json"))) {
+    throw new Error(
+      `an install made under the old name is still in ${legacy}. Uninstall it first with ` +
+        `CC_STARSHIP_HOME="${legacy}" cc-starship uninstall, then install again.`,
+    );
+  }
   const previous = readInstalled();
   const components = o.components ?? previous?.components ?? ALL_COMPONENTS;
   const prefs = o.prefs ?? previous?.prefs ?? DEFAULT_PREFS;

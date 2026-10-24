@@ -84,14 +84,25 @@ export function applyWindowsTerminal(data: Json): WindowsTerminalPrior {
 /** Puts back the fonts `applyWindowsTerminal` changed, keeping everything else. */
 export function restoreWindowsTerminal(data: Json, prior: WindowsTerminalPrior): void {
   const list = profileList(data);
-  if (prior.defaultsFont) data.profiles.defaults.font = prior.defaultsFont;
+  // Only face and size go back; other font settings changed since (weight…) stay.
+  const putBack = (font: Json | undefined, before: Json | undefined) => {
+    const f = { ...font };
+    delete f.face;
+    delete f.size;
+    if (before && "face" in before) f.face = before.face;
+    if (before && "size" in before) f.size = before.size;
+    return Object.keys(f).length ? f : undefined;
+  };
+  const defaults = putBack(data.profiles.defaults.font, prior.defaultsFont);
+  if (defaults) data.profiles.defaults.font = defaults;
   else delete data.profiles.defaults.font;
   for (const p of list) {
     const before = prior.profiles[profileKey(p)];
     if (!before) continue;
-    delete p.font;
-    delete p.fontFace;
-    delete p.fontSize;
-    Object.assign(p, before);
+    const font = putBack(p.font, before.font);
+    if (font) p.font = font;
+    else delete p.font;
+    if ("fontFace" in before) p.fontFace = before.fontFace;
+    if ("fontSize" in before) p.fontSize = before.fontSize;
   }
 }

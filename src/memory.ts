@@ -4,14 +4,15 @@
 
 export type ShellKind = "zsh" | "powershell";
 
-const zshQuote = (s: string) => `'${s.replaceAll("'", "'\\''")}'`;
-const psQuote = (s: string) => `'${s.replaceAll("'", "''")}'`;
+export const zshQuote = (s: string) => `'${s.replaceAll("'", "'\\''")}'`;
+// PowerShell also ends a single-quoted string at the curly quotes U+2018 to U+201B.
+export const psQuote = (s: string) => `'${s.replace(/['\u2018-\u201b]/g, "$&$&")}'`;
 
 function zsh(lastdir: string): string[] {
   return [
     "HISTFILE=${HISTFILE:-${ZDOTDIR:-$HOME}/.zsh_history}",
-    "HISTSIZE=100000",
-    "SAVEHIST=100000",
+    "(( HISTSIZE < 100000 )) && HISTSIZE=100000",
+    "(( SAVEHIST < 100000 )) && SAVEHIST=100000",
     "setopt HIST_IGNORE_ALL_DUPS HIST_SAVE_NO_DUPS HIST_IGNORE_SPACE INC_APPEND_HISTORY",
     `__ssl_lastdir=${zshQuote(lastdir)}`,
     "__ssl_save_dir() {",
@@ -42,9 +43,12 @@ function powershell(lastdir: string): string[] {
     "    $h = (Get-PSReadLineOption).HistorySavePath",
     '    $stamp = "$global:__sslLastDir.history"',
     "    $f = Get-Item -LiteralPath $h -ErrorAction Ignore",
-    "    $last = if (Test-Path -LiteralPath $stamp) { [IO.File]::ReadAllText($stamp) } else { '' }",
-    "    # Only when the file changed since the last pass (most tab starts skip all this).",
-    '    if ($f -and $last -ne "$($f.Length) $($f.LastWriteTimeUtc.Ticks)") {',
+    "    $size = [long]0",
+    "    if (Test-Path -LiteralPath $stamp) { $null = [long]::TryParse([IO.File]::ReadAllText($stamp), [ref]$size) }",
+    "    # Only once it has grown by a quarter since the last pass: most tab starts skip all this.",
+    "    if ($f -and ($size -eq 0 -or $f.Length -gt $size * 1.25)) {",
+    '      $first = "$h.before-cc-starship"',
+    "      if (-not (Test-Path -LiteralPath $first)) { Copy-Item -LiteralPath $h -Destination $first }",
     "      $entries = [Collections.Generic.List[string]]::new(); $cur = $null",
     "      foreach ($line in [IO.File]::ReadAllLines($h)) {",
     '        $cur = if ($null -eq $cur) { $line } else { $cur + "`n" + $line }',
@@ -57,11 +61,13 @@ function powershell(lastdir: string): string[] {
     "      if ($keep.Count -lt $entries.Count) {",
     "        $keep.Reverse()",
     "        $nl = [Environment]::NewLine",
-    '        [IO.File]::WriteAllText("$h.$PID.tmp", (($keep -join "`n") -replace "`n", $nl) + $nl)',
-    '        Move-Item -LiteralPath "$h.$PID.tmp" -Destination $h -Force',
-    "        $f = Get-Item -LiteralPath $h",
+    '        $tmp = "$h.$PID.tmp"',
+    "        try {",
+    '          [IO.File]::WriteAllText($tmp, (($keep -join "`n") -replace "`n", $nl) + $nl)',
+    "          Move-Item -LiteralPath $tmp -Destination $h -Force",
+    "        } finally { Remove-Item -LiteralPath $tmp -ErrorAction Ignore }",
     "      }",
-    '      [IO.File]::WriteAllText($stamp, "$($f.Length) $($f.LastWriteTimeUtc.Ticks)")',
+    "      [IO.File]::WriteAllText($stamp, [string](Get-Item -LiteralPath $h).Length)",
     "    }",
     "  } catch {}",
     "}",

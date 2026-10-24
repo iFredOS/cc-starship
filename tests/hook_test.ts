@@ -113,3 +113,25 @@ Deno.test("hook: time left until each reset", () => {
   assertStringIncludes(text, "(in 2h 10m)"); // 23:00 → 01:10
   assertStringIncludes(text, "(in 2d 6h)"); // 23:00 → Mon 05:00
 });
+
+Deno.test("hook: odd input (null, a number) prints nothing instead of failing the prompt", () => {
+  const o = setup();
+  for (const input of ["null", "42", '"text"', "[]"]) {
+    assertEquals(hookOutput(input, { ...o, prefs: en12, now, from: 0 }), "", input);
+  }
+});
+
+Deno.test("hook: newer shared 5h/7d numbers win over an old session snapshot (resumed session)", () => {
+  const o = setup();
+  const file = snapshotFile(o.sessions, payload.session_id);
+  saveSnapshot(file, payload, new Date(now.getTime() - 3 * 3600e3)); // 3 h old: 5h 21%
+  Deno.writeTextFileSync(o.usageFile, `${at(1, 2)} 64 ${at(1, 18)} 30\n`);
+  const old = new Date(now.getTime() - 3 * 3600e3);
+  Deno.utimeSync(file, old, old);
+  const text = context(
+    hookOutput(JSON.stringify({ session_id: "abc-123" }), { ...o, prefs: en12, now, from: 0 }),
+  );
+  assertStringIncludes(text, "5h 64%");
+  assertStringIncludes(text, "7d 30%");
+  assertStringIncludes(text, "context 65%", "context still comes from the session");
+});

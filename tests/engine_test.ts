@@ -506,3 +506,99 @@ Deno.test("Windows Terminal changes made between installs survive uninstall", as
     s.restore();
   }
 });
+
+Deno.test("profile without a final newline: blocks removed in any order leave valid, exact text", async () => {
+  const s = sandbox();
+  try {
+    Deno.writeTextFileSync(s.zshrc, "export A=1");
+    const before = sha(s.zshrc);
+    await install("rainbow", { ...opts(s), components: { ...ALL_COMPONENTS, terminal: false } });
+    await setComponents({ ...ALL_COMPONENTS, shell: false, usage: false, terminal: false });
+    const text = Deno.readTextFileSync(s.zshrc);
+    assert(text.startsWith("export A=1\n# >>> cc-starship memory >>>"), JSON.stringify(text.slice(0, 50)));
+    await setComponents({ ...ALL_COMPONENTS, shell: false, usage: false, memory: false, terminal: false });
+    assertEquals(sha(s.zshrc), before);
+  } finally {
+    s.restore();
+  }
+});
+
+Deno.test("a symlinked settings.json comes back as the same link", async () => {
+  const s = sandbox();
+  try {
+    const target = join(s.home, "dotfiles-settings.json");
+    Deno.writeTextFileSync(target, '{"model": "opus"}\n');
+    Deno.symlinkSync(target, s.settings);
+    await install("rainbow", opts(s));
+    await uninstall();
+    assert(Deno.lstatSync(s.settings).isSymlink, "the link is back");
+    assertEquals(Deno.readLinkSync(s.settings), target);
+    assertEquals(Deno.readTextFileSync(target), '{"model": "opus"}\n');
+  } finally {
+    s.restore();
+  }
+});
+
+Deno.test("switching the hook off keeps the user's hook that shares our group", async () => {
+  const s = sandbox();
+  try {
+    await install("rainbow", opts(s));
+    const data = JSON.parse(Deno.readTextFileSync(s.settings));
+    data.hooks.UserPromptSubmit[0].hooks.push({ type: "command", command: "echo mine" });
+    Deno.writeTextFileSync(s.settings, JSON.stringify(data, null, 2));
+    await setComponents({ ...ALL_COMPONENTS, hook: false });
+    assertEquals(JSON.parse(Deno.readTextFileSync(s.settings)).hooks, {
+      UserPromptSubmit: [{ hooks: [{ type: "command", command: "echo mine" }] }],
+    });
+  } finally {
+    s.restore();
+  }
+});
+
+Deno.test("commands are quoted only when the path has spaces (PowerShell can't run a quoted path)", async () => {
+  const s = sandbox();
+  try {
+    await install("rainbow", opts(s));
+    const data = JSON.parse(Deno.readTextFileSync(s.settings));
+    assertEquals(data.statusLine.command, `${join(s.installDir, "bin", "x")} statusline`);
+    assertEquals(data.hooks.UserPromptSubmit[0].hooks[0].command, `${join(s.installDir, "bin", "x")} hook`);
+    await install("rainbow", { ...opts(s), bin: join(s.home, "my apps", "x") });
+    const spaced = JSON.parse(Deno.readTextFileSync(s.settings));
+    assertEquals(spaced.statusLine.command, `"${join(s.home, "my apps", "x")}" statusline`);
+    assertEquals(spaced.hooks.UserPromptSubmit.length, 1, "the old unquoted hook was replaced");
+  } finally {
+    s.restore();
+  }
+});
+
+Deno.test("Windows Terminal: a font change made after install is kept, ours taken out", async () => {
+  const s = sandbox();
+  try {
+    const wt = join(s.home, "settings.json.wt.json");
+    Deno.writeTextFileSync(wt, JSON.stringify(wtSettings, null, 4) + "\n");
+    Deno.env.set("CC_STARSHIP_TERMINALS", wt);
+    await install("rainbow", { ...opts(s), components: { ...ALL_COMPONENTS, terminal: true } });
+    const data = JSON.parse(Deno.readTextFileSync(wt));
+    data.profiles.defaults.font.weight = "bold";
+    data.profiles.list[1].font = { weight: "light" };
+    Deno.writeTextFileSync(wt, JSON.stringify(data, null, 4));
+    await setComponents({ ...ALL_COMPONENTS, terminal: false });
+    const after = JSON.parse(Deno.readTextFileSync(wt));
+    assertEquals(after.profiles.defaults.font, { weight: "bold" });
+    assertEquals(after.profiles.list[1].font, { face: "CaskaydiaCove NF", size: 13, weight: "light" });
+  } finally {
+    s.restore();
+  }
+});
+
+Deno.test("an install from the old starship-statusline folder must be moved over first", async () => {
+  const s = sandbox();
+  try {
+    const old = join(s.home, ".local", "share", "starship-statusline");
+    Deno.mkdirSync(old, { recursive: true });
+    Deno.writeTextFileSync(join(old, "manifest.json"), "{}");
+    await assertRejects(() => install("rainbow", opts(s)), Error, "CC_STARSHIP_HOME");
+  } finally {
+    s.restore();
+  }
+});

@@ -99,3 +99,15 @@ Deno.test("PowerShell block: remembers through Starship's pre-command hook and d
     "a start in C:\\Windows (Run, some launchers) counts as no choice",
   );
 });
+
+Deno.test("zsh: a bigger history size you set yourself is kept (only ever raised)", () => {
+  const z = zshHome();
+  const rc = join(z.home, ".zshrc");
+  Deno.writeTextFileSync(rc, "HISTSIZE=2000000\nSAVEHIST=1000000\n" + Deno.readTextFileSync(rc));
+  assertEquals(zsh(z.home, z.home, "print $HISTSIZE $SAVEHIST"), "2000000 1000000");
+});
+
+Deno.test("PowerShell: curly quotes and apostrophes in the folder path stay inside the string", () => {
+  const block = memoryBlock("powershell", "C:\\Users\\O’Brien's\\lastdir");
+  assertStringIncludes(block, "$global:__sslLastDir = 'C:\\Users\\O’’Brien''s\\lastdir'");
+});

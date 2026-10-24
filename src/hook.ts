@@ -69,7 +69,8 @@ function readUsage(file: string): Snapshot | null {
   try {
     const f = Deno.readTextFileSync(file).trim().split(/\s+/).map(Number);
     if (f.length !== 4 || f.some(Number.isNaN)) return null;
-    return { savedAt: 0, fiveHour: { resetsAt: f[0], pct: f[1] }, sevenDay: { resetsAt: f[2], pct: f[3] } };
+    const savedAt = (Deno.statSync(file).mtime?.getTime() ?? 0) / 1000;
+    return { savedAt, fiveHour: { resetsAt: f[0], pct: f[1] }, sevenDay: { resetsAt: f[2], pct: f[3] } };
   } catch {
     return null;
   }
@@ -129,9 +130,13 @@ export function hookOutput(stdin: string, o: HookOptions): string {
   } catch {
     return "";
   }
+  if (!input || typeof input !== "object" || Array.isArray(input)) return "";
   const session = input.session_id ? readJson(snapshotFile(o.sessions, input.session_id)) : null;
   const shared = readUsage(o.usageFile);
-  const snapshot = session ?? shared;
+  // 5h/7d are account-wide: a resumed session's old snapshot loses to newer shared numbers.
+  const snapshot = session && shared && shared.savedAt > session.savedAt
+    ? { ...session, fiveHour: shared.fiveHour, sevenDay: shared.sevenDay }
+    : session ?? shared;
   if (!snapshot) return "";
   if (highest(snapshot, o.now ?? new Date()) < (o.from ?? 0)) return "";
   const text = describe(snapshot, o);

@@ -154,7 +154,11 @@ export function componentLines(info: PanelInfo, selected: number): string[] {
         : `from ${info.prefs.hookFrom ?? DEFAULT_HOOK_FROM}%`
     }   ${dim("silent (0 tokens) until context, 5h or 7d gets there")}`,
     `${box(c.memory)} Shell memory                ${
-      dim("new tabs open in your last folder; no duplicate history")
+      dim(
+        `new tabs open in your last folder; no duplicate history${
+          isWindows ? " (with the Starship prompt)" : ""
+        }`,
+      )
     }`,
     `${box(c.terminal)} Terminal settings           ${
       dim(

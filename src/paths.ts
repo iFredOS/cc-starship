@@ -20,6 +20,14 @@ export function installDir(): string {
   return join(home(), ".local", "share", "cc-starship");
 }
 
+/** Where installs made under the old name (starship-statusline) live. */
+export function legacyInstallDir(): string {
+  if (isWindows) {
+    return join(Deno.env.get("LOCALAPPDATA") ?? join(home(), "AppData", "Local"), "starship-statusline");
+  }
+  return join(home(), ".local", "share", "starship-statusline");
+}
+
 export const binName = isWindows ? "cc-starship.exe" : "cc-starship";
 
 export const paths = {
