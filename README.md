@@ -20,6 +20,22 @@ opens a control panel with two screens; Tab switches between them.
   prompt, the Claude usage segment in the prompt. Before installing, this
   chooses what gets installed; afterwards it applies right away, and a part
   switched off is restored exactly
+- Add-ons, each a switch of its own:
+  - **Usage for Claude**: a Claude Code hook hands Claude the bar's numbers
+    (context, 5h, 7d, reset times and time left) so it can pace itself. It
+    costs about 70 tokens on each prompt it speaks up on, which the panel says
+    before it's switched on. "Send usage to Claude" sets when it starts:
+    every prompt, or once context, 5h or 7d reaches 50, 70 or 90% (default 50;
+    below it, nothing is sent and nothing is spent)
+  - **Shell memory**: a new tab that starts in your home folder opens in the
+    last folder you cd'd into; history keeps one copy of each command, the
+    newest. zsh and PowerShell; shells run by agents or by one-off commands
+    (`ssh host cmd`, `pwsh -Command`) are left alone
+  - **Terminal settings**: JetBrainsMono Nerd Font 15 and Option as Alt in
+    cmux and Ghostty; the same font as Windows Terminal's default
+- oh-my-posh still starting in a profile, or drawing the status line, gets a
+  note at install and in `status`: it conflicts with Starship, which draws the
+  same kind of prompt about 3× faster
 - Starship shows its version and whether a newer one exists; Enter updates it
   (through brew, winget or Scoop when they installed it, otherwise by
   downloading the release), X removes it
@@ -33,9 +49,10 @@ use: the preview shows exactly what that terminal and its font will draw.
 The same actions as commands, for scripts or remote machines:
 
 ```sh
-starship-statusline install [--preset NAME] [--no-starship-update]
+starship-statusline install [--preset NAME] [--no-starship-update] [--no-hook]
 starship-statusline theme [NAME]                    # switch, or show the current preset
-starship-statusline components [bar|shell|usage] [on|off]
+starship-statusline components [bar|shell|usage|hook|memory|terminal] [on|off]
+starship-statusline prefs [language auto|en|fr-CA] [clock auto|24h|12h] [hook-from 0|50|70|90]
 starship-statusline status                          # parts, Starship, Nerd Fonts
 starship-statusline font list | install ID | remove ID
 starship-statusline starship update | remove
@@ -51,6 +68,9 @@ starship-statusline uninstall
 | shell prompt config | `~/.config/starship.toml` | the previous file (or link) put back byte for byte |
 | Claude Code `statusLine` | `~/.claude/settings.json` | put back; other settings you changed since are kept |
 | Starship start-up line, only if missing | `~/.zshrc`, or each PowerShell `$PROFILE` | the added block removed |
+| usage hook (`UserPromptSubmit`) | `~/.claude/settings.json` | removed; your own hooks are never touched |
+| shell memory block | `~/.zshrc`, or each PowerShell `$PROFILE` | the added block removed |
+| terminal font and keys | cmux `config.ghostty`, `~/.config/ghostty/config`; Windows Terminal `settings.json` | the added block removed; Windows Terminal's fonts put back |
 | Starship itself, if missing or outdated | updated by brew / winget / Scoop when they installed it, otherwise the latest release is downloaded and checksum-verified | |
 
 ## What the status bar shows
