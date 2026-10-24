@@ -160,9 +160,14 @@ function readSettings(path: string): Record<string, unknown> | null {
 
 // ── Shell profiles ───────────────────────────────────────────────────────
 
-export function shellProfiles(): string[] {
+/**
+ * The shell profiles to set up. Finding PowerShell's means starting each PowerShell (about
+ * 0.3 s apiece), so an install saves the list in its state and later switches reuse it.
+ */
+export function shellProfiles(state?: { profilePaths?: string[] }): string[] {
   const override = Deno.env.get("CC_STARSHIP_PROFILES");
   if (override !== undefined) return override.split(";").filter(Boolean);
+  if (state?.profilePaths) return state.profilePaths;
   if (!isWindows) {
     const home = Deno.env.get("HOME")!;
     const profiles = [join(home, ".zshrc")];
@@ -286,6 +291,8 @@ export interface InstalledState extends State {
   components: Components;
   /** Language and clock for dates in the status bar. */
   prefs: Prefs;
+  /** Shell profiles found at install (see shellProfiles). */
+  profilePaths?: string[];
 }
 
 /** The installed state, or null when not installed. */
@@ -317,7 +324,7 @@ function addShell(p: Preset, state: InstalledState, manifest: Manifest, report: 
   }
   entry.written = writeOwned(entry.path, shellConfig(p, state.bin, { usage: state.components.usage }));
   report.push(`${entry.path}: ${p.name} shell prompt`);
-  for (const profile of shellProfiles()) {
+  for (const profile of shellProfiles(state)) {
     if (manifest.profiles.some((e) => e.path === profile)) continue;
     const hooked = hookProfile(profile, state.starship, createdByUs(manifest, profile));
     if (hooked) {
@@ -351,9 +358,9 @@ function shellKind(profile: string): "zsh" | "powershell" | null {
 }
 
 /** Shell prompt off: profiles that still start Starship on their own get the shell's prompt back. */
-function addPromptOff(manifest: Manifest, report: string[]): void {
+function addPromptOff(state: InstalledState, manifest: Manifest, report: string[]): void {
   manifest.promptOff ??= [];
-  for (const profile of shellProfiles()) {
+  for (const profile of shellProfiles(state)) {
     const kind = shellKind(profile);
     if (!kind || manifest.promptOff.some((e) => e.path === profile)) continue;
     if (!lstat(profile) || !STARTS_STARSHIP.test(readText(profile))) continue;
@@ -393,9 +400,9 @@ function ensureBlock(
   return true;
 }
 
-function addMemory(manifest: Manifest, report: string[]): void {
+function addMemory(state: InstalledState, manifest: Manifest, report: string[]): void {
   manifest.memory ??= [];
-  for (const profile of shellProfiles()) {
+  for (const profile of shellProfiles(state)) {
     const kind = shellKind(profile);
     if (!kind) {
       if (!manifest.memory.some((e) => e.path === profile)) {
@@ -594,6 +601,7 @@ function removeSettings(manifest: Manifest, report: string[], bin = ""): void {
 /** Brings the files in line with `state`: its preset, and each component on or off. */
 function apply(state: InstalledState, manifest: Manifest, report: string[]): void {
   const p = preset(state.theme);
+  if (Deno.env.get("CC_STARSHIP_PROFILES") === undefined) state.profilePaths ??= shellProfiles();
   writeText(paths.barConfig(), barConfig(p));
   writeText(paths.state(), JSON.stringify(state, null, 2) + "\n");
   if (state.components.shell) {
@@ -601,10 +609,10 @@ function apply(state: InstalledState, manifest: Manifest, report: string[]): voi
     addShell(p, state, manifest, report);
   } else {
     removeShell(manifest, report);
-    addPromptOff(manifest, report);
+    addPromptOff(state, manifest, report);
   }
   syncSettings(state, manifest, report);
-  if (state.components.memory) addMemory(manifest, report);
+  if (state.components.memory) addMemory(state, manifest, report);
   else removeMemory(manifest, report);
   if (state.components.terminal) addTerminal(manifest, report);
   else removeTerminal(manifest, report);

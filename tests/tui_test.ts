@@ -1,5 +1,5 @@
 import { assert, assertEquals, assertStringIncludes } from "@std/assert";
-import { componentLines, OFF, ON, previewBlock } from "../src/tui.ts";
+import { componentLines, OFF, ON, parseKeys, previewBlock } from "../src/tui.ts";
 import type { Prefs } from "../src/when.ts";
 import { stripAnsi } from "./helpers.ts";
 import { rgb } from "../src/color.ts";
@@ -115,4 +115,13 @@ Deno.test("components panel: switches in the look's accent, the cursor row marke
   assertStringIncludes(lines[0], `38;2;${rgb(theme.accent).join(";")}`, "the cursor row uses the accent");
   assert(stripAnsi(lines[0]).includes("▸"));
   assert(stripAnsi(lines.join("\n")).includes(`${OFF} Usage for Claude`));
+});
+
+Deno.test("keys: several in one read (a held arrow key, fast typing) are all handled", () => {
+  const enc = (s: string) => new TextEncoder().encode(s);
+  assertEquals(parseKeys(enc("\x1b[B\x1b[B\x1b[B")), ["down", "down", "down"]);
+  assertEquals(parseKeys(enc("\x1b[A\x1b[C q")), ["up", "right", "space", "quit"]);
+  assertEquals(parseKeys(enc("\x1b")), ["back"]);
+  assertEquals(parseKeys(enc("\r\n")), ["enter"]);
+  assertEquals(parseKeys(enc("\t")), ["tab"]);
 });

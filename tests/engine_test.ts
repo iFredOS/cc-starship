@@ -730,3 +730,21 @@ Deno.test("Windows Terminal font from an older version is brought up to date, pr
     s.restore();
   }
 });
+
+Deno.test("profile paths are found once at install and reused by later switches", async () => {
+  const s = sandbox();
+  try {
+    Deno.env.delete("CC_STARSHIP_PROFILES"); // real discovery (on macOS: ~/.zshrc)
+    await install("rainbow", { ...opts(s), components: { ...ALL_COMPONENTS, memory: false } });
+    const statePath = join(s.installDir, "state.json");
+    const state = JSON.parse(Deno.readTextFileSync(statePath));
+    assert(Array.isArray(state.profilePaths) && state.profilePaths.length > 0, JSON.stringify(state));
+    // A later switch uses the saved list instead of asking the shells again.
+    const other = join(s.home, "other.zshrc");
+    Deno.writeTextFileSync(statePath, JSON.stringify({ ...state, profilePaths: [other] }));
+    await setComponents({ ...ALL_COMPONENTS, memory: true });
+    assertStringIncludes(Deno.readTextFileSync(other), "cc-starship memory >>>");
+  } finally {
+    s.restore();
+  }
+});

@@ -1,7 +1,7 @@
 import { assert, assertEquals } from "@std/assert";
 import { join } from "node:path";
 import { allPresets, barConfig, DEFAULT_PRESET, findPreset, shellConfig } from "../src/presets.ts";
-import { tempDir } from "./helpers.ts";
+import { stripAnsi, tempDir } from "./helpers.ts";
 
 const starship = (config: string, env: Record<string, string> = {}) => {
   const dir = tempDir();
@@ -77,4 +77,12 @@ Deno.test("clean names: a version only when the same look has another version", 
   for (const old of ["sunset-v1", "ocean-v1", "mocha-v1", "nord-v1"]) {
     assertEquals(findPreset(old)?.id, old.replace("-v1", ""), `${old} still works`);
   }
+});
+
+Deno.test("previews render asynchronously, both Starship runs at once, same lines as before", async () => {
+  const { previewLines, previewLinesAsync } = await import("../src/app.ts");
+  const p = findPreset("ember")!;
+  const strip = (l: string[]) =>
+    l.map((s) => s.replace(/\x1b\[[0-9;]*m/g, "").replace(/\d+:\d+ ?[AP]M|\d+ h \d*/g, "T"));
+  assertEquals(strip(await previewLinesAsync(p, "starship")), strip(previewLines(p, "starship")));
 });

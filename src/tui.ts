@@ -4,7 +4,7 @@
 // - Components: switch the status bar, shell prompt and usage segment on or off,
 //   update or remove Starship, and install a Nerd Font.
 // Q or Esc quits without changing anything.
-import { doInstall, ensureStarship, previewLines, runUninstall, VERSION } from "./app.ts";
+import { doInstall, ensureStarship, previewLinesAsync, runUninstall, VERSION } from "./app.ts";
 import {
   ALL_COMPONENTS,
   type Components,
@@ -27,6 +27,7 @@ import { HOOK_COST } from "./hook.ts";
 import { isWindows, paths } from "./paths.ts";
 import { TERMINAL_FONT, TERMINAL_SIZE } from "./terminal.ts";
 import { allPresets, DEFAULT_PRESET, findPreset, type Preset } from "./presets.ts";
+import { gitStatus } from "./statusline.ts";
 import { box, fitView, gridShape, header, keys, looksGrid, paint, type Theme, themeOf } from "./panel.ts";
 import {
   DEFAULT_HOOK_FROM,
@@ -205,13 +206,12 @@ type Key =
   | "explain"
   | "other";
 
-function parseKey(bytes: Uint8Array): Key {
-  const s = new TextDecoder().decode(bytes);
+function parseKey(s: string): Key {
   if (s === `${ESC}[A` || s === "k" || s === "w") return "up";
   if (s === `${ESC}[B` || s === "j" || s === "s") return "down";
   if (s === `${ESC}[D` || s === "h") return "left";
   if (s === `${ESC}[C` || s === "l") return "right";
-  if (s === "\r" || s === "\n") return "enter";
+  if (s === "\r" || s === "\n" || s === "\r\n") return "enter";
   if (s === ESC) return "back";
   if (s === "q" || s === "Q" || s === "\x03") return "quit";
   if (s === "\t") return "tab";
@@ -224,11 +224,21 @@ function parseKey(bytes: Uint8Array): Key {
   return "other";
 }
 
-async function readKey(): Promise<Key> {
-  const buf = new Uint8Array(16);
-  const n = await Deno.stdin.read(buf);
-  return n === null ? "quit" : parseKey(buf.subarray(0, n));
+/** Every key in one read: a held arrow key or fast typing arrives several at a time. */
+export function parseKeys(bytes: Uint8Array): Key[] {
+  // deno-lint-ignore no-control-regex -- escape sequences
+  const tokens = new TextDecoder().decode(bytes).match(/\x1b\[[0-9;]*[A-Za-z~]|\x1bO.|\r\n|[\s\S]/g) ?? [];
+  return tokens.map(parseKey);
 }
+
+async function readKeys(): Promise<Key[]> {
+  const buf = new Uint8Array(256);
+  const n = await Deno.stdin.read(buf);
+  return n === null ? ["quit"] : parseKeys(buf.subarray(0, n));
+}
+
+/** One answer: the first key of the next read (keys typed before the question don't answer it). */
+const readKey = async (): Promise<Key> => (await readKeys())[0] ?? "other";
 
 function fontHint(theme: Theme): string {
   const icons = "\u{f07b} \u{e725} \u{f1c0} \u{f06d} \u{f252} \u{f073} \u{e0b6}\u{e0b0}\u{e0b4}";
@@ -246,7 +256,7 @@ export async function runUi(): Promise<number> {
   let state = readInstalled();
   let components: Components = state?.components ?? { ...ALL_COMPONENTS };
   let prefs: Prefs = state?.prefs ?? DEFAULT_PREFS;
-  let index = Math.max(0, presets.findIndex((p) => p.id === (state?.theme ?? DEFAULT_PRESET)));
+  let index = Math.max(0, presets.findIndex((p) => p.id === findPreset(state?.theme ?? DEFAULT_PRESET)?.id));
   let screen: Screen = "looks";
   let row = 0;
   let fontRow = 0;
@@ -255,13 +265,29 @@ export async function runUi(): Promise<number> {
   let fonts = detectNerdFonts();
   let message = "";
   let explain = true;
+  // Previews render in the background, so arrow keys never wait: both Starship runs of a
+  // preview at once, one git status for all looks, always the look nearest the cursor next.
+  const git = gitStatus(Deno.cwd());
   const previews = new Map<string, string[]>();
-  const preview = (p: Preset) => {
-    if (!previews.has(p.id)) {
-      previews.set(p.id, previewLines(p, info?.path ?? "starship", resolvePrefs(prefs)));
+  let generation = 0;
+  let idle = false; // waiting for a key: safe to redraw when a preview arrives
+  const warm = async () => {
+    const gen = ++generation;
+    previews.clear();
+    while (gen === generation) {
+      const next = presets
+        .map((p, i) => ({ p, distance: Math.abs(i - index) }))
+        .sort((a, b) => a.distance - b.distance)
+        .find(({ p }) => !previews.has(p.id))?.p;
+      if (!next) return;
+      const lines = await previewLinesAsync(next, info?.path ?? "starship", resolvePrefs(prefs), git)
+        .catch(() => [] as string[]);
+      if (gen !== generation) return;
+      previews.set(next.id, lines);
+      if (idle && screen === "looks" && presets[index].id === next.id) draw();
     }
-    return previews.get(p.id)!;
   };
+  const preview = (p: Preset) => previews.get(p.id);
 
   const width = () => {
     try {
@@ -273,6 +299,12 @@ export async function runUi(): Promise<number> {
   // The panel takes the colors of the look under the cursor.
   const theme = () => themeOf(presets[index]);
   const inUse = () => (state ? findPreset(state.theme)?.id : undefined);
+  // Same height as a finished preview, so the screen doesn't jump when it arrives.
+  const rendering = (explain: boolean, t: Theme) => {
+    const ready = [...previews.values()].find((l) => l.length);
+    const rows = ready ? previewBlock(ready, { explain }).length : 1;
+    return [paint(t.dim, "rendering the preview…"), ...Array(Math.max(0, rows - 1)).fill("")];
+  };
   const height = () => {
     try {
       return Deno.consoleSize().rows;
@@ -301,9 +333,11 @@ export async function runUi(): Promise<number> {
       ...(roomy ? [""] : []),
       ...box(
         `Preview · ${p.name}`,
-        info
-          ? previewBlock(preview(p), { explain, theme: t })
-          : [paint(t.dim, "(the preview appears once Starship is installed)")],
+        !info
+          ? [paint(t.dim, "(the preview appears once Starship is installed)")]
+          : preview(p)
+          ? previewBlock(preview(p)!, { explain, theme: t })
+          : rendering(explain, t),
         { width: w, theme: t, right: legend },
       ),
       ...(roomy ? ["", fontHint(t)] : []),
@@ -411,7 +445,7 @@ export async function runUi(): Promise<number> {
     await prompt("Press any key to continue.");
     info = findStarship();
     fonts = detectNerdFonts();
-    previews.clear();
+    warm();
     state = readInstalled();
   };
 
@@ -454,7 +488,7 @@ export async function runUi(): Promise<number> {
         : { ...prefs, clock: CLOCKS[(CLOCKS.indexOf(prefs.clock) + 1) % CLOCKS.length] };
       if (state) await setPrefs(next);
       prefs = next;
-      previews.clear();
+      warm();
     }
     if (key === "enter" && name === "font") {
       screen = "fonts";
@@ -550,36 +584,47 @@ export async function runUi(): Promise<number> {
 
   write(`${ESC}[?1049h${ESC}[?25l`);
   Deno.stdin.setRaw(true);
-  latestVersion().then((v) => (latest = v), () => (latest = null)).then(draw);
+  latestVersion().then((v) => (latest = v), () => (latest = null)).then(() => idle && draw());
+  warm();
+  /** Handles one key; true when the panel should close. */
+  const handle = async (key: Key): Promise<boolean> => {
+    // Read through a function: the switch to "fonts" happens in callbacks TS can't follow.
+    const on = (name: Screen) => screen === name;
+    if (key === "quit" || (key === "back" && !on("fonts"))) return true;
+    if (key === "back") {
+      screen = "components";
+      return false;
+    }
+    if (key === "tab") {
+      screen = screen === "looks" ? "components" : "looks";
+      return false;
+    }
+    if (key === "uninstall" && state && screen === "looks") {
+      if (await prompt(yellow("Uninstall and put back your previous settings? (y/N) ")) !== "yes") {
+        return false;
+      }
+      await run("Uninstalling…", async (log) => {
+        const code = await runUninstall(log);
+        log(
+          code === 0 ? green("Uninstalled. Your previous prompt and status bar are back in new tabs.") : "",
+        );
+      });
+      return true;
+    }
+    if (screen === "looks") await onLooksKey(key);
+    else if (screen === "components") await onComponentsKey(key);
+    else await onFontsKey(key);
+    return false;
+  };
+
   try {
     while (true) {
       draw();
       message = "";
-      const key = await readKey();
-      // Read through a function: the switch to "fonts" happens in callbacks TS can't follow.
-      const on = (name: Screen) => screen === name;
-      if (key === "quit" || (key === "back" && !on("fonts"))) return 0;
-      if (key === "back") {
-        screen = "components";
-        continue;
-      }
-      if (key === "tab") {
-        screen = screen === "looks" ? "components" : "looks";
-        continue;
-      }
-      if (key === "uninstall" && state && screen === "looks") {
-        if (await prompt(yellow("Uninstall and put back your previous settings? (y/N) ")) !== "yes") continue;
-        await run("Uninstalling…", async (log) => {
-          const code = await runUninstall(log);
-          log(
-            code === 0 ? green("Uninstalled. Your previous prompt and status bar are back in new tabs.") : "",
-          );
-        });
-        return 0;
-      }
-      if (screen === "looks") await onLooksKey(key);
-      else if (screen === "components") await onComponentsKey(key);
-      else await onFontsKey(key);
+      idle = true;
+      const keys = await readKeys();
+      idle = false;
+      for (const key of keys) if (await handle(key)) return 0;
     }
   } finally {
     try {

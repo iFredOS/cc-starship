@@ -19,6 +19,8 @@ export interface BarOptions {
   columns?: number;
   accountEmail?: string;
   usageFile?: string;
+  /** A git status already worked out for this folder (previews of every look share one). */
+  git?: GitStatus;
   /** Where to save this session's numbers for the usage hook. */
   snapshotFile?: string;
   /** Language and clock for reset times; defaults to the system's. */
@@ -101,7 +103,9 @@ function percent(value?: number): string {
 }
 
 // Branch name and its " ↑1 ↓2 *" marks from `git status`; "─" outside a repository.
-function gitStatus(dir: string): { name: string; marks: string } {
+export type GitStatus = { name: string; marks: string };
+
+export function gitStatus(dir: string): GitStatus {
   const git = (...args: string[]) => {
     const out = new Deno.Command("git", { args: ["-C", dir, ...args], stdout: "piped", stderr: "null" })
       .outputSync();
@@ -237,7 +241,7 @@ export function buildBar(j: Json, opts: BarOptions): { dir: string; vars: Record
   const effort = EFFORT[String(j.effort?.level ?? "").toLowerCase()];
   const fiveHour = limits.five_hour;
   const sevenDay = limits.seven_day;
-  const git = gitStatus(dir);
+  const git = opts.git ?? gitStatus(dir);
   const others = git.name === "─" ? 0 : otherWorktrees(dir);
   const branch = branchLabel(j, git, 24);
   const withOthers = branch && others > 0 ? `${branch} · ${ICON.worktree} ${others} more` : branch;
@@ -308,8 +312,8 @@ export function buildBar(j: Json, opts: BarOptions): { dir: string; vars: Record
   return { dir, vars };
 }
 
-/** Renders the bar; falls back to the model name if Starship can't run. */
-export function renderBar(j: Json, opts: BarOptions): string {
+/** The `starship prompt` run that draws the bar, and what to show if Starship can't run. */
+export function barCommand(j: Json, opts: BarOptions): { command: Deno.Command; fallback: string } {
   const { dir, vars } = buildBar(j, opts);
   let cwd = dir;
   try {
@@ -320,21 +324,29 @@ export function renderBar(j: Json, opts: BarOptions): string {
   const env: Record<string, string> = {};
   for (const [k, v] of Object.entries(Deno.env.toObject())) if (!k.startsWith("CC_")) env[k] = v;
   Object.assign(env, vars, { PWD: cwd, STARSHIP_SHELL: "", STARSHIP_CONFIG: opts.configPath });
+  const command = new Deno.Command(opts.starship, {
+    args: ["prompt"],
+    cwd,
+    env,
+    clearEnv: true,
+    stdout: "piped",
+    stderr: "null",
+  });
+  return { command, fallback: `✻ ${cleanModelName(j.model?.display_name, j.model?.id)}` };
+}
+
+/** What a finished Starship run printed, or `fallback` when it failed. */
+export const barOutput = (out: Deno.CommandOutput | null, fallback: string) =>
+  out?.success ? new TextDecoder().decode(out.stdout) : fallback;
+
+/** Renders the bar; falls back to the model name if Starship can't run. */
+export function renderBar(j: Json, opts: BarOptions): string {
+  const { command, fallback } = barCommand(j, opts);
   try {
-    const out = new Deno.Command(opts.starship, {
-      args: ["prompt"],
-      cwd,
-      env,
-      clearEnv: true,
-      stdout: "piped",
-      stderr: "null",
-    })
-      .outputSync();
-    if (out.success) return new TextDecoder().decode(out.stdout);
+    return barOutput(command.outputSync(), fallback);
   } catch {
-    // fall through
+    return fallback;
   }
-  return `✻ ${cleanModelName(j.model?.display_name, j.model?.id)}`;
 }
 
 export function readAccountEmail(file: string): string {

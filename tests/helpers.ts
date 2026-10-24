@@ -22,6 +22,7 @@ export function bar(
     email?: string;
     usageFile?: string;
     prefs?: BarOptions["prefs"];
+    git?: BarOptions["git"];
   } = {},
 ): string {
   return barWith(findPreset(opts.preset ?? "fusain") as Preset, payload, opts);
@@ -31,7 +32,13 @@ export function bar(
 export function barWith(
   preset: Preset,
   payload: unknown,
-  opts: { columns?: number; email?: string; usageFile?: string; prefs?: BarOptions["prefs"] } = {},
+  opts: {
+    columns?: number;
+    email?: string;
+    usageFile?: string;
+    prefs?: BarOptions["prefs"];
+    git?: BarOptions["git"];
+  } = {},
 ): string {
   const dir = tempDir();
   const configPath = join(dir, "statusline.toml");
@@ -45,6 +52,7 @@ export function barWith(
       accountEmail: opts.email ?? "you@example.com",
       usageFile: opts.usageFile ?? join(dir, "usage"),
       prefs: opts.prefs,
+      git: opts.git,
     });
   } finally {
     Deno.removeSync(dir, { recursive: true });

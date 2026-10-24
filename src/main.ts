@@ -70,7 +70,9 @@ async function status(): Promise<number> {
     `starship:   ${info ? `${info.version} via ${info.managedBy}, ${info.path}${update}` : "not found"}`,
   );
   console.log(`nerd fonts: ${fontFamilies(detectNerdFonts()).join(", ") || "none found"}`);
-  for (const note of ompNotes(shellProfiles(), claudeStatusLine())) console.log(`note:       ${note}`);
+  for (const note of ompNotes(shellProfiles(state ?? undefined), claudeStatusLine())) {
+    console.log(`note:       ${note}`);
+  }
   const wt = windowsTerminalSettings();
   if (wt) {
     let plain = true;

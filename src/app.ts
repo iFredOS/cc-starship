@@ -7,7 +7,7 @@ import { isWindows, paths, readState } from "./paths.ts";
 import { TERMINAL_FONT } from "./terminal.ts";
 import { barConfig, type Preset, shellConfig } from "./presets.ts";
 import { downloadStarship, findStarship, latestVersion, runUpdate, updatePlan } from "./starship.ts";
-import { renderBar } from "./statusline.ts";
+import { barCommand, barOutput, type GitStatus } from "./statusline.ts";
 import type { Clock, Language, Prefs } from "./when.ts";
 
 export const VERSION = "1.0.0";
@@ -89,38 +89,79 @@ export async function doInstall(
   report.forEach(log);
 }
 
+type PreviewPrefs = { language: Language; clock: Clock };
+
+/** The two Starship runs of a preview (status bar, shell prompt), set up in a temporary folder. */
+function previewCommands(preset: Preset, starship: string, prefs?: PreviewPrefs, git?: GitStatus) {
+  const dir = Deno.makeTempDirSync({ prefix: "cc-starship-preview-" });
+  const bar = join(dir, "bar.toml"), shell = join(dir, "shell.toml");
+  Deno.writeTextFileSync(bar, barConfig(preset));
+  Deno.writeTextFileSync(shell, shellConfig(preset, Deno.execPath()));
+  const sample = samplePayload();
+  // Setting up the bar saves the sample's 5h/7d usage here, before either run starts;
+  // the prompt's usage segment reads it back.
+  const { command, fallback } = barCommand(sample, {
+    preset,
+    configPath: bar,
+    starship,
+    accountEmail: "you@example.com",
+    usageFile: join(dir, "usage"),
+    prefs,
+    git,
+  });
+  const prompt = new Deno.Command(starship, {
+    args: ["prompt", "--cmd-duration", "1233000"],
+    cwd: sample.workspace.current_dir,
+    env: { STARSHIP_CONFIG: shell, STARSHIP_SHELL: "", CC_STARSHIP_HOME: dir },
+    stdout: "piped",
+    stderr: "null",
+  });
+  const lines = (barOut: Deno.CommandOutput | null, promptOut: Deno.CommandOutput | null) => {
+    const promptLine = promptOut
+      ? new TextDecoder().decode(promptOut.stdout).split("\n").find((l) => l.trim())
+      : "";
+    return [...barOutput(barOut, fallback).trimEnd().split("\n"), promptLine ?? ""];
+  };
+  return { dir, bar: command, prompt, lines };
+}
+
 /** The preset's status bar (from a sample session) and shell prompt, as ANSI text. */
 export function previewLines(
   preset: Preset,
   starship = readState()?.starship ?? "starship",
-  prefs?: { language: Language; clock: Clock },
+  prefs?: PreviewPrefs,
 ): string[] {
-  const dir = Deno.makeTempDirSync({ prefix: "cc-starship-preview-" });
+  const p = previewCommands(preset, starship, prefs);
+  const run = (c: Deno.Command) => {
+    try {
+      return c.outputSync();
+    } catch {
+      return null;
+    }
+  };
   try {
-    const bar = join(dir, "bar.toml"), shell = join(dir, "shell.toml");
-    Deno.writeTextFileSync(bar, barConfig(preset));
-    Deno.writeTextFileSync(shell, shellConfig(preset, Deno.execPath()));
-    const sample = samplePayload();
-    // The bar saves the sample's 5h/7d usage here, and the prompt's usage segment reads it back.
-    const barText = renderBar(sample, {
-      preset,
-      configPath: bar,
-      starship,
-      accountEmail: "you@example.com",
-      usageFile: join(dir, "usage"),
-      prefs,
-    });
-    const prompt = new Deno.Command(starship, {
-      args: ["prompt", "--cmd-duration", "1233000"],
-      cwd: sample.workspace.current_dir,
-      env: { STARSHIP_CONFIG: shell, STARSHIP_SHELL: "", CC_STARSHIP_HOME: dir },
-      stdout: "piped",
-      stderr: "null",
-    }).outputSync();
-    const promptLine = new TextDecoder().decode(prompt.stdout).split("\n").find((l) => l.trim()) ?? "";
-    return [...barText.trimEnd().split("\n"), promptLine];
+    return p.lines(run(p.bar), run(p.prompt));
   } finally {
-    Deno.removeSync(dir, { recursive: true });
+    Deno.removeSync(p.dir, { recursive: true });
+  }
+}
+
+/** Like `previewLines`, without blocking: both Starship runs at once; `git` shared between looks. */
+export async function previewLinesAsync(
+  preset: Preset,
+  starship: string,
+  prefs?: PreviewPrefs,
+  git?: GitStatus,
+): Promise<string[]> {
+  const p = previewCommands(preset, starship, prefs, git);
+  try {
+    const [bar, prompt] = await Promise.all([
+      p.bar.output().catch(() => null),
+      p.prompt.output().catch(() => null),
+    ]);
+    return p.lines(bar, prompt);
+  } finally {
+    await Deno.remove(p.dir, { recursive: true });
   }
 }
 

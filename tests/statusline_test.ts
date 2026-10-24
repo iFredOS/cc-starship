@@ -229,3 +229,8 @@ Deno.test("other worktrees: the count is the first thing a narrow window drops",
   assert(!narrow.includes("more"), narrow);
   assertStringIncludes(narrow, "\u{e725} main");
 });
+
+Deno.test("a git status worked out once can be passed in (previews of every look reuse it)", () => {
+  const out = plain(payload(), { git: { name: "from-cache", marks: " *" } });
+  assertStringIncludes(out, "\u{e725} from-cache *");
+});
