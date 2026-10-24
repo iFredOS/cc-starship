@@ -26,7 +26,6 @@ Deno.test("with explanations, each line is followed by what its parts mean", () 
       "lines changed",
       "session time",
       "context used",
-      "prompt cache",
       "5-hour limit",
       "7-day limit",
       "70%",
@@ -82,5 +81,5 @@ Deno.test("components panel: language and clock rows show the choice and a sampl
     "\n",
   );
   assert(fr.includes("Français (Québec)") && fr.includes("24 h"), fr);
-  assert(/demain \d+ h/.test(fr), "sample reset in the chosen format: " + fr);
+  assert(/(dim|lun|mar|mer|jeu|ven|sam)\. 18 h/.test(fr), "sample reset in the chosen format: " + fr);
 });

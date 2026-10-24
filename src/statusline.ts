@@ -57,8 +57,6 @@ const ICON = {
   diff: "\uf440",
   clock: "\uf017",
   context: "\uf1c0",
-  warm: "\uf06d",
-  cold: "\uf2dc",
   fiveHour: "\uf252",
   sevenDay: "\uf073",
   warning: "\uf071",
@@ -100,7 +98,7 @@ function formatDuration(ms: number): string {
   return `${s}s`;
 }
 
-// " · 18:00", " · tomorrow 6:00 PM", " · sam. 18 h": see formatWhen.
+// " · 6 PM", " · Sat 18:00", " · sam. 18 h": see formatWhen.
 function formatReset(epochSeconds: number | undefined, prefs: { language: Language; clock: Clock }): string {
   return epochSeconds ? ` · ${formatWhen(new Date(epochSeconds * 1000), new Date(), prefs)}` : "";
 }
@@ -149,17 +147,6 @@ function branchLabel(j: Json, git: { name: string; marks: string }, max: number)
   const derived = git.name === "─" ||
     [worktree, `worktree-${worktree}`, j.worktree?.branch].includes(git.name);
   return `${ICON.worktree} ${truncate(worktree, max)}${derived ? "" : ` ${branch}`}${git.marks}`;
-}
-
-// Minutes until the prompt cache goes cold (amber from 5), or "cold" once it has.
-function cacheTimer(cache?: Json): string | null {
-  if (!cache?.caching_observed) return null;
-  const left = cache.warm && cache.expires_at
-    ? Math.floor((cache.expires_at * 1000 - Date.now()) / 60e3)
-    : -1;
-  if (left < 0) return `${ICON.cold} ${AMBER}cold${RESTORE}`;
-  const label = left < 1 ? "<1m" : `${left}m`;
-  return `${ICON.warm} ${left <= 5 ? `${AMBER}${label}${RESTORE}` : label}`;
 }
 
 // The directory as Starship's directory module shows it, for width estimates.
@@ -260,10 +247,9 @@ export function buildBar(j: Json, opts: BarOptions): { dir: string; vars: Record
     context: `${ICON.context} CTX ${percent(ctx.used_percentage)} / ${
       formatTokens(ctx.total_input_tokens ?? 0)
     } ($${(cost.total_cost_usd ?? 0).toFixed(2)})`,
-    cache: cacheTimer(j.prompt_cache),
     fiveHour: fiveHourUsage && fiveHourUsage + formatReset(fiveHour.resets_at, prefs),
     sevenDay: sevenDayUsage && sevenDayUsage + formatReset(sevenDay.resets_at, prefs),
-  }, [{ sevenDay: sevenDayUsage }, { fiveHour: fiveHourUsage }, { sevenDay: null }, { cache: null }, {
+  }, [{ sevenDay: sevenDayUsage }, { fiveHour: fiveHourUsage }, { sevenDay: null }, {
     fiveHour: null,
   }], budget);
 

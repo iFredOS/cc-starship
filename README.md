@@ -59,7 +59,7 @@ starship-statusline uninstall
 |---|---|
 | 1 | model, effort, Claude Code version, account |
 | 2 | folder, branch or worktree (↑ ahead ↓ behind * uncommitted), lines changed, session time |
-| 3 | context used and cost, minutes until the prompt cache goes cold, 5-hour and 7-day limits with reset times |
+| 3 | context used and cost, 5-hour and 7-day limits with reset times (today: the time; another day: its weekday; a week or more: the date) |
 
 A percentage becomes an amber chip at 70% and a red ▲ chip at 90%. On narrow
 terminals each line drops its least useful parts until it fits. The shell

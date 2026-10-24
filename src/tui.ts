@@ -50,7 +50,7 @@ const EXPLAIN = {
       "\u{f07b} folder · \u{e725} branch or worktree (↑ ahead ↓ behind * uncommitted) · \u{f440} lines changed · \u{f017} session time",
     ],
     [
-      "\u{f1c0} context used (cost) · \u{f06d} prompt cache: minutes left · \u{f252} 5-hour limit · \u{f073} 7-day limit, with resets",
+      "\u{f1c0} context used (cost) · \u{f252} 5-hour limit · \u{f073} 7-day limit, with resets",
       "a percentage turns into an amber chip at 70%, a red ▲ chip at 90%",
     ],
   ],

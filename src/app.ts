@@ -116,7 +116,6 @@ function samplePayload() {
       total_duration_ms: 8460000,
     },
     context_window: { used_percentage: 34, total_input_tokens: 68000 },
-    prompt_cache: { caching_observed: true, warm: true, expires_at: now + 42 * 60 },
     rate_limits: {
       five_hour: { used_percentage: 42, resets_at: now + 5400 },
       seven_day: { used_percentage: 23, resets_at: now + 3 * 86400 },

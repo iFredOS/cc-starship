@@ -1,4 +1,4 @@
-// Reset times in the user's language and clock: "18:00", "tomorrow 6:00 PM",
+// Reset times in the user's language and clock: "18:00", "Sat 6 PM",
 // "sam. 18 h", "30 oct. 18 h". Québécois French follows OQLF style (18 h 30).
 
 export type Language = "en" | "fr-CA";
@@ -13,12 +13,10 @@ export const DEFAULT_PREFS: Prefs = { language: "auto", clock: "auto" };
 
 const WORDS = {
   en: {
-    tomorrow: "tomorrow",
     days: ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"],
     months: ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"],
   },
   "fr-CA": {
-    tomorrow: "demain",
     days: ["dim.", "lun.", "mar.", "mer.", "jeu.", "ven.", "sam."],
     months: [
       "janv.",
@@ -56,18 +54,17 @@ function time(d: Date, language: Language, clock: Clock): string {
     const suffix = clock === "12h" ? (h < 12 ? " a.m." : " p.m.") : "";
     return `${hour} h${m ? ` ${mm}` : ""}${suffix}`;
   }
-  if (clock === "12h") return `${(h + 11) % 12 + 1}:${mm} ${h < 12 ? "AM" : "PM"}`;
+  if (clock === "12h") return `${(h + 11) % 12 + 1}${m ? `:${mm}` : ""} ${h < 12 ? "AM" : "PM"}`;
   return `${String(h).padStart(2, "0")}:${mm}`;
 }
 
-/** `when` relative to `now`: today → time, tomorrow → "tomorrow", this week → weekday, later → date. */
+/** `when` relative to `now`: today → time, another day this week → weekday, later → date. */
 export function formatWhen(when: Date, now: Date, prefs: { language: Language; clock: Clock }): string {
   const w = WORDS[prefs.language];
   const day = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
   const days = Math.round((day(when) - day(now)) / 86400e3);
   const t = time(when, prefs.language, prefs.clock);
   if (days <= 0) return t;
-  if (days === 1) return `${w.tomorrow} ${t}`;
   if (days < 7) return `${w.days[when.getDay()]} ${t}`;
   const month = w.months[when.getMonth()];
   const date = prefs.language === "fr-CA" ? `${when.getDate()} ${month}` : `${month} ${when.getDate()}`;

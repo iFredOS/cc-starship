@@ -15,12 +15,13 @@ Deno.test("today shows only the time", () => {
   assertEquals(formatWhen(at(0, 23, 45), now, fr24), "23 h 45");
 });
 
-Deno.test("tomorrow says so, even when it is less than 24 hours away", () => {
-  assertEquals(formatWhen(at(1, 18), now, en24), "tomorrow 18:00");
-  assertEquals(formatWhen(at(1, 18), now, en12), "tomorrow 6:00 PM");
-  assertEquals(formatWhen(at(1, 18), now, fr24), "demain 18 h");
-  assertEquals(formatWhen(at(1, 9, 5), now, fr24), "demain 9 h 05");
-  assertEquals(formatWhen(at(1, 18, 30), now, fr12), "demain 6 h 30 p.m.");
+Deno.test("another day shows its weekday, even tomorrow; 12 h drops :00 on the hour", () => {
+  assertEquals(formatWhen(at(1, 18), now, en24), "Sat 18:00");
+  assertEquals(formatWhen(at(1, 18), now, en12), "Sat 6 PM");
+  assertEquals(formatWhen(at(1, 2), now, en12), "Sat 2 AM");
+  assertEquals(formatWhen(at(1, 18), now, fr24), "sam. 18 h");
+  assertEquals(formatWhen(at(1, 9, 5), now, fr24), "sam. 9 h 05");
+  assertEquals(formatWhen(at(1, 18, 30), now, fr12), "sam. 6 h 30 p.m.");
 });
 
 Deno.test("within the week: the weekday", () => {

@@ -115,16 +115,11 @@ Deno.test("branch shows ahead/behind and dirty marks", () => {
   assertStringIncludes(plain(payload({}, repo)), "\ue725 main *");
 });
 
-Deno.test("prompt cache: minutes while warm, amber from 5, cold once expired", () => {
-  const cache = (c: Record<string, unknown>) => payload({ prompt_cache: { caching_observed: true, ...c } });
-  assertStringIncludes(plain(cache({ warm: true, expires_at: now() + 42 * 60 + 10 })), "\uf06d 42m");
-  assertStringIncludes(
-    bar(cache({ warm: true, expires_at: now() + 4 * 60 + 10 })),
-    "\x1b[38;2;250;189;47m4m",
+Deno.test("no prompt cache timer, even when Claude Code sends cache data", () => {
+  const out = plain(
+    payload({ prompt_cache: { caching_observed: true, warm: true, expires_at: now() + 600 } }),
   );
-  assertStringIncludes(bar(cache({ warm: false, expires_at: null })), "\uf2dc \x1b[38;2;250;189;47mcold");
-  assert(!plain(payload()).includes("\uf2dc"));
-  assert(!plain(payload({ prompt_cache: { caching_observed: false, warm: false } })).includes("\uf2dc"));
+  assert(!out.includes("\u{f06d}") && !out.includes("\u{f2dc}"), out);
 });
 
 Deno.test("worktrees show their name, not the derived branch", () => {
