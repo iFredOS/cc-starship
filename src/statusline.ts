@@ -157,25 +157,30 @@ function otherWorktrees(dir: string): number {
     if (!info.isDirectory) {
       const gitdir = /^gitdir:\s*(.+)$/m.exec(Deno.readTextFileSync(entry))?.[1].trim();
       if (!gitdir) return 0;
-      own = basename(resolve(d, gitdir));
-      common = dirname(dirname(resolve(d, gitdir)));
+      const ownDir = resolve(d, gitdir); // <common>/worktrees/<name>
+      own = basename(ownDir);
+      common = dirname(dirname(ownDir));
     }
-    let count = own && basename(common) === ".git" ? 1 : 0;
+    const main = own && basename(common) === ".git" ? 1 : 0;
+    const worktrees = join(common, "worktrees");
     try {
-      for (const wt of Deno.readDirSync(join(common, "worktrees"))) {
-        if (wt.name === own) continue;
-        try {
-          const folder = join(common, "worktrees", wt.name);
-          Deno.statSync(resolve(folder, Deno.readTextFileSync(join(folder, "gitdir")).trim()));
-          count++;
-        } catch {
-          // its folder is gone
-        }
-      }
+      const live = [...Deno.readDirSync(worktrees)].filter((wt) =>
+        wt.name !== own && isLive(join(worktrees, wt.name))
+      );
+      return main + live.length;
     } catch {
-      // no linked worktrees
+      return main; // no linked worktrees
     }
-    return count;
+  }
+}
+
+/** A linked worktree's folder still exists (git calls the others "prunable"). */
+function isLive(folder: string): boolean {
+  try {
+    Deno.statSync(resolve(folder, Deno.readTextFileSync(join(folder, "gitdir")).trim()));
+    return true;
+  } catch {
+    return false;
   }
 }
 
@@ -183,14 +188,13 @@ const truncate = (s: string, max: number) => (s.length > max ? `${s.slice(0, max
 
 // In a worktree, its name replaces the branch; the branch is added only when it
 // isn't the one Claude Code derived from the name ("worktree-<name>").
-function branchLabel(j: Json, git: { name: string; marks: string }, max: number, others = 0): string | null {
+function branchLabel(j: Json, git: { name: string; marks: string }, max: number): string | null {
   const worktree = j.worktree?.name || j.workspace?.git_worktree;
   const branch = `${ICON.branch} ${truncate(git.name, max)}`;
-  const more = others > 0 ? ` · ${ICON.worktree} ${others} more` : "";
-  if (!worktree) return git.name === "─" ? null : `${branch}${git.marks}${more}`;
+  if (!worktree) return git.name === "─" ? null : `${branch}${git.marks}`;
   const derived = git.name === "─" ||
     [worktree, `worktree-${worktree}`, j.worktree?.branch].includes(git.name);
-  return `${ICON.worktree} ${truncate(worktree, max)}${derived ? "" : ` ${branch}`}${git.marks}${more}`;
+  return `${ICON.worktree} ${truncate(worktree, max)}${derived ? "" : ` ${branch}`}${git.marks}`;
 }
 
 // The directory as Starship's directory module shows it, for width estimates.
@@ -250,6 +254,8 @@ export function buildBar(j: Json, opts: BarOptions): { dir: string; vars: Record
   const sevenDay = limits.seven_day;
   const git = gitStatus(dir);
   const others = git.name === "─" ? 0 : otherWorktrees(dir);
+  const branch = branchLabel(j, git, 24);
+  const withOthers = branch && others > 0 ? `${branch} · ${ICON.worktree} ${others} more` : branch;
   // Claude Code sets COLUMNS; keep a margin for the bar's own indent.
   const budget = (opts.columns ?? Infinity) - 2;
   if (opts.usageFile) saveUsage(opts.usageFile, fiveHour, sevenDay);
@@ -280,12 +286,12 @@ export function buildBar(j: Json, opts: BarOptions): { dir: string; vars: Record
   const line2 = fit(
     {
       directory: directoryLabel(dir),
-      branch: branchLabel(j, git, 24, others),
+      branch: withOthers,
       diff: cost.total_duration_ms > 0
         ? `${diff} · ${ICON.clock} ${formatDuration(cost.total_duration_ms)}`
         : diff,
     },
-    [{ branch: branchLabel(j, git, 24) }, { diff }, { branch: branchLabel(j, git, 12) }, { diff: null }],
+    [{ branch }, { diff }, { branch: branchLabel(j, git, 12) }, { diff: null }],
     budget,
   ).slice(1);
 

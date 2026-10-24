@@ -1,7 +1,7 @@
 import { assert, assertEquals, assertStringIncludes } from "@std/assert";
 import { join } from "node:path";
 import { formatWhen } from "../src/when.ts";
-import { bar, barWith, fixture, now, payload, plain, stripAnsi, tempDir } from "./helpers.ts";
+import { bar, barWith, fixture, git, now, payload, plain, stripAnsi, tempDir } from "./helpers.ts";
 
 const CAP_START = "\ue0b6", ARROW = "\ue0b0", CAP_END = "\ue0b4";
 const rgb = (hex: string) => hex.match(/\w\w/g)!.map((h) => parseInt(h, 16)).join(";");
@@ -106,11 +106,10 @@ Deno.test("no branch placeholder outside a repository", () => {
 
 Deno.test("branch shows ahead/behind and dirty marks", () => {
   const repo = tempDir();
-  const git = (...args: string[]) => new Deno.Command("git", { args: ["-C", repo, ...args] }).outputSync();
-  git("-c", "init.defaultBranch=main", "init", "-q");
+  git(repo, "init", "-q", "-b", "main");
   Deno.writeTextFileSync(join(repo, "f"), "hi");
-  git("add", "f");
-  git("-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "init");
+  git(repo, "add", "f");
+  git(repo, "commit", "-qm", "init");
   Deno.writeTextFileSync(join(repo, "f"), "bye");
   assertStringIncludes(plain(payload({}, repo)), "\ue725 main *");
 });
@@ -162,56 +161,44 @@ Deno.test("each segment uses its preset text color", () => {
 function realWorktree() {
   const root = Deno.realPathSync(tempDir());
   const repo = join(root, "app"), wt = join(root, "app-login");
-  const git = (cwd: string, ...args: string[]) =>
-    new Deno.Command("git", { args: ["-c", "user.name=t", "-c", "user.email=t@example.com", ...args], cwd })
-      .outputSync();
   Deno.mkdirSync(repo);
   git(repo, "init", "-q", "-b", "main");
   Deno.writeTextFileSync(join(repo, "a.txt"), "a\n");
   git(repo, "add", "-A");
   git(repo, "commit", "-qm", "init");
   git(repo, "worktree", "add", "-q", "-b", "login-form", wt);
-  return { repo, wt };
+  return { root, repo, wt };
 }
+
+/** Line 2 of the bar for a session in `dir` (`extra` goes into `workspace`). */
+const line2 = (dir: string, extra: Record<string, unknown> = {}, columns?: number) =>
+  plain({ model: { display_name: "x" }, workspace: { current_dir: dir, ...extra } }, { columns }).split(
+    "\n",
+  )[1];
 
 Deno.test("real worktree, as Claude Code reports it (--worktree / EnterWorktree)", () => {
   const { wt } = realWorktree();
-  const out = plain({
-    model: { display_name: "x" },
-    workspace: { current_dir: wt, git_worktree: "app-login" },
-  });
   // The worktree's name, then its real branch (not one Claude Code derived from the name).
-  assertStringIncludes(out, "\u{f0645} app-login \u{e725} login-form");
+  assertStringIncludes(line2(wt, { git_worktree: "app-login" }), "\u{f0645} app-login \u{e725} login-form");
 });
 
 Deno.test("real worktree that Claude Code doesn't flag: its own branch still shows", () => {
   const { repo, wt } = realWorktree();
-  assertStringIncludes(plain({ model: { display_name: "x" }, workspace: { current_dir: wt } }), "login-form");
-  const main = plain({ model: { display_name: "x" }, workspace: { current_dir: repo } });
+  assertStringIncludes(line2(wt), "login-form");
+  const main = line2(repo);
   assertStringIncludes(main, "\u{e725} main");
   assert(!main.includes("login-form"), "the main checkout shows main");
 });
 
 /** realWorktree() plus a second linked worktree, and a stale one whose folder is gone. */
 function worktreeFamily() {
-  const { repo, wt } = realWorktree();
-  const git = (...args: string[]) =>
-    new Deno.Command("git", {
-      args: ["-c", "user.name=t", "-c", "user.email=t@example.com", ...args],
-      cwd: repo,
-    })
-      .outputSync();
-  const second = join(repo, "..", "app-docs"), stale = join(repo, "..", "app-old");
-  git("worktree", "add", "-q", "-b", "docs", second);
-  git("worktree", "add", "-q", "-b", "old", stale);
+  const { root, repo, wt } = realWorktree();
+  const stale = join(root, "app-old");
+  git(repo, "worktree", "add", "-q", "-b", "docs", join(root, "app-docs"));
+  git(repo, "worktree", "add", "-q", "-b", "old", stale);
   Deno.removeSync(stale, { recursive: true }); // what git calls "prunable"
-  return { repo, wt, second };
+  return { repo, wt };
 }
-
-const line2 = (dir: string, extra: Record<string, unknown> = {}, columns?: number) =>
-  plain({ model: { display_name: "x" }, workspace: { current_dir: dir, ...extra } }, { columns }).split(
-    "\n",
-  )[1];
 
 Deno.test("other worktrees: counted from the main checkout, stale ones ignored", () => {
   const { repo } = worktreeFamily();
@@ -229,8 +216,9 @@ Deno.test("other worktrees: found from a subfolder; nothing shown when there are
   Deno.mkdirSync(join(repo, "src"));
   assertStringIncludes(line2(join(repo, "src")), "2 more");
   const lone = Deno.realPathSync(tempDir());
-  new Deno.Command("git", { args: ["init", "-q", "-b", "main"], cwd: lone }).outputSync();
-  assert(!line2(lone).includes("more"), line2(lone));
+  git(lone, "init", "-q", "-b", "main");
+  const out = line2(lone);
+  assert(!out.includes("more"), out);
 });
 
 Deno.test("other worktrees: the count is the first thing a narrow window drops", () => {

@@ -56,6 +56,15 @@ export const plain = (payload: unknown, opts: Parameters<typeof bar>[1] = {}) =>
 
 export const now = () => Math.floor(Date.now() / 1000);
 
+/** Runs git in `cwd` with a throwaway identity. */
+export function git(cwd: string, ...args: string[]): Deno.CommandOutput {
+  return new Deno.Command("git", {
+    args: ["-c", "user.name=t", "-c", "user.email=t@example.com", ...args],
+    cwd,
+  })
+    .outputSync();
+}
+
 export function payload(extra: Record<string, unknown> = {}, dir = Deno.makeTempDirSync()) {
   return { model: { display_name: "Opus 5.5" }, workspace: { current_dir: dir }, ...extra };
 }
