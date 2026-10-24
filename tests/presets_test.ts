@@ -32,7 +32,7 @@ Deno.test("neighbouring segments never share a background", () => {
 
 Deno.test("every preset gives configs Starship accepts", () => {
   for (const p of allPresets()) {
-    for (const config of [shellConfig(p, "/opt/bin/starship-statusline"), barConfig(p)]) {
+    for (const config of [shellConfig(p, "/opt/bin/cc-starship"), barConfig(p)]) {
       const { stdout, stderr } = starship(config);
       assert(!/warn|error/i.test(stderr), `${p.id}: ${stderr}`);
       assert(stdout.length > 0, p.id);
@@ -50,7 +50,7 @@ Deno.test("shell config uses the preset's segment colors", () => {
 Deno.test("Windows binary paths get forward slashes in the shell config", () => {
   const config = shellConfig(
     findPreset("gray")!,
-    "C:\\Users\\me\\AppData\\Local\\starship-statusline\\bin\\x.exe",
+    "C:\\Users\\me\\AppData\\Local\\cc-starship\\bin\\x.exe",
   );
-  assert(config.includes("shell = ['C:/Users/me/AppData/Local/starship-statusline/bin/x.exe', 'usage']"));
+  assert(config.includes("shell = ['C:/Users/me/AppData/Local/cc-starship/bin/x.exe', 'usage']"));
 });

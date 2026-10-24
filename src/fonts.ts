@@ -138,7 +138,7 @@ const saveRecords = (records: FontRecord[]) => {
 
 /** Installs `font` for the current user; returns a line per step. */
 export async function installFont(font: Font): Promise<string[]> {
-  const tmp = Deno.makeTempDirSync({ prefix: "starship-statusline-font-" });
+  const tmp = Deno.makeTempDirSync({ prefix: "cc-starship-font-" });
   try {
     const files = await downloadFontFiles(font, tmp);
     const { user } = fontDirs();

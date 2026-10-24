@@ -1,4 +1,4 @@
-# starship-statusline
+# cc-starship
 
 A Claude Code status bar and a matching shell prompt, both rendered by
 [Starship](https://starship.rs), with 15 color presets. One self-contained
@@ -49,22 +49,22 @@ use: the preview shows exactly what that terminal and its font will draw.
 The same actions as commands, for scripts or remote machines:
 
 ```sh
-starship-statusline install [--preset NAME] [--no-starship-update] [--no-hook]
-starship-statusline theme [NAME]                    # switch, or show the current preset
-starship-statusline components [bar|shell|usage|hook|memory|terminal] [on|off]
-starship-statusline prefs [language auto|en|fr-CA] [clock auto|24h|12h] [hook-from 0|50|70|90]
-starship-statusline status                          # parts, Starship, Nerd Fonts
-starship-statusline font list | install ID | remove ID
-starship-statusline starship update | remove
-starship-statusline presets | preview [NAME]
-starship-statusline uninstall
+cc-starship install [--preset NAME] [--no-starship-update] [--no-hook]
+cc-starship theme [NAME]                    # switch, or show the current preset
+cc-starship components [bar|shell|usage|hook|memory|terminal] [on|off]
+cc-starship prefs [language auto|en|fr-CA] [clock auto|24h|12h] [hook-from 0|50|70|90]
+cc-starship status                          # parts, Starship, Nerd Fonts
+cc-starship font list | install ID | remove ID
+cc-starship starship update | remove
+cc-starship presets | preview [NAME]
+cc-starship uninstall
 ```
 
 ## What install changes
 
 | What | Where | Uninstall |
 |---|---|---|
-| the program, generated configs, backups | `~/.local/share/starship-statusline` (Windows: `%LOCALAPPDATA%\starship-statusline`) | removed |
+| the program, generated configs, backups | `~/.local/share/cc-starship` (Windows: `%LOCALAPPDATA%\cc-starship`) | removed |
 | shell prompt config | `~/.config/starship.toml` | the previous file (or link) put back byte for byte |
 | Claude Code `statusLine` | `~/.claude/settings.json` | put back; other settings you changed since are kept |
 | Starship start-up line, only if missing | `~/.zshrc`, or each PowerShell `$PROFILE` | the added block removed |

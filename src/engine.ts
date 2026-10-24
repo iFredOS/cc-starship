@@ -17,12 +17,12 @@ import {
 import { barConfig, findPreset, type Preset, shellConfig } from "./presets.ts";
 import { DEFAULT_PREFS, type Prefs } from "./when.ts";
 
-const MARK_START = "# >>> starship-statusline >>>";
-const MARK_END = "# <<< starship-statusline <<<";
-const MEMORY_START = "# >>> starship-statusline memory >>>";
-const MEMORY_END = "# <<< starship-statusline memory <<<";
-const TERMINAL_START = "# >>> starship-statusline terminal >>>";
-const TERMINAL_END = "# <<< starship-statusline terminal <<<";
+const MARK_START = "# >>> cc-starship >>>";
+const MARK_END = "# <<< cc-starship <<<";
+const MEMORY_START = "# >>> cc-starship memory >>>";
+const MEMORY_END = "# <<< cc-starship memory <<<";
+const TERMINAL_START = "# >>> cc-starship terminal >>>";
+const TERMINAL_END = "# <<< cc-starship terminal <<<";
 
 type Prior = { kind: "missing" } | { kind: "file"; backup: string } | { kind: "symlink"; target: string };
 
@@ -153,7 +153,7 @@ function readSettings(path: string): Record<string, unknown> | null {
 // ── Shell profiles ───────────────────────────────────────────────────────
 
 export function shellProfiles(): string[] {
-  const override = Deno.env.get("STARSHIP_STATUSLINE_PROFILES");
+  const override = Deno.env.get("CC_STARSHIP_PROFILES");
   if (override !== undefined) return override.split(";").filter(Boolean);
   if (!isWindows) {
     const home = Deno.env.get("HOME")!;
@@ -221,14 +221,14 @@ function unhookProfile(entry: ProfileEntry): string {
   if (!lstat(entry.path)) return `${entry.path}: already gone`;
   const text = readText(entry.path);
   const at = text.lastIndexOf(entry.block);
-  if (at < 0) return `${entry.path}: the starship-statusline block was edited; remove it yourself`;
+  if (at < 0) return `${entry.path}: the cc-starship block was edited; remove it yourself`;
   const rest = text.slice(0, at) + text.slice(at + entry.block.length);
   if (entry.created && rest.replace(/^\uFEFF/, "").trim() === "") {
     Deno.removeSync(entry.path);
     return `${entry.path}: removed (the installer created it)`;
   }
   writeText(entry.path, rest);
-  return `${entry.path}: removed the starship-statusline block`;
+  return `${entry.path}: removed the cc-starship block`;
 }
 
 // ── Components ───────────────────────────────────────────────────────────
@@ -403,10 +403,10 @@ function hookCommand(bin: string): string {
 
 type HookGroup = { matcher?: string; hooks?: { command?: string }[] };
 
-/** Our UserPromptSubmit group: any that runs `<starship-statusline> hook`. */
+/** Our UserPromptSubmit group: any that runs `<cc-starship> hook` (or the old starship-statusline name). */
 function isOurHook(group: HookGroup, bin: string): boolean {
   return (group.hooks ?? []).some((h) =>
-    h.command === hookCommand(bin) || /starship-statusline[^"]*" hook$/.test(h.command ?? "")
+    h.command === hookCommand(bin) || /(cc-starship|starship-statusline)[^"]*" hook$/.test(h.command ?? "")
   );
 }
 
@@ -571,7 +571,7 @@ function removeInstallDir(): void {
   for (const entry of Deno.readDirSync(dir)) {
     if (entry.name !== "bin") Deno.removeSync(join(dir, entry.name), { recursive: true });
   }
-  const script = join(Deno.env.get("TEMP") ?? dir, `starship-statusline-cleanup-${Deno.pid}.cmd`);
+  const script = join(Deno.env.get("TEMP") ?? dir, `cc-starship-cleanup-${Deno.pid}.cmd`);
   Deno.writeTextFileSync(
     script,
     [

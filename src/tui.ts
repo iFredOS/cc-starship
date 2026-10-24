@@ -258,7 +258,7 @@ export async function runUi(): Promise<number> {
   const header = () => {
     const tab = (name: string, on: boolean) => (on ? bold(`[ ${name} ]`) : dim(`  ${name}  `));
     return [
-      bold(`starship-statusline ${VERSION}`) + dim("  ·  Claude Code status bar + shell prompt"),
+      bold(`cc-starship ${VERSION}`) + dim("  ·  Claude Code status bar + shell prompt"),
       `${tab("Looks", screen === "looks")} ${tab("Components", screen !== "looks")}   ${dim("Tab switches")}`,
       "",
     ];

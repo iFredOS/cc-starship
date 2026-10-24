@@ -35,8 +35,8 @@ Deno.test("knows who installed starship", () => {
   assertEquals(managedBy("C:\\Users\\me\\scoop\\shims\\starship.exe"), "scoop");
   assertEquals(
     managedBy(
-      "/home/me/.local/share/starship-statusline/bin/starship",
-      "/home/me/.local/share/starship-statusline",
+      "/home/me/.local/share/cc-starship/bin/starship",
+      "/home/me/.local/share/cc-starship",
     ),
     "ours",
   );

@@ -11,7 +11,7 @@ import { renderBar } from "./statusline.ts";
 import type { Clock, Language, Prefs } from "./when.ts";
 
 export const VERSION = "0.1.0";
-const compiled = basename(Deno.execPath()).startsWith("starship-statusline");
+const compiled = basename(Deno.execPath()).startsWith("cc-starship");
 
 /** Claude Code's current statusLine setting, if readable. */
 export function claudeStatusLine(): { command?: string } | undefined {
@@ -95,7 +95,7 @@ export function previewLines(
   starship = readState()?.starship ?? "starship",
   prefs?: { language: Language; clock: Clock },
 ): string[] {
-  const dir = Deno.makeTempDirSync({ prefix: "starship-statusline-preview-" });
+  const dir = Deno.makeTempDirSync({ prefix: "cc-starship-preview-" });
   try {
     const bar = join(dir, "bar.toml"), shell = join(dir, "shell.toml");
     Deno.writeTextFileSync(bar, barConfig(preset));
@@ -113,7 +113,7 @@ export function previewLines(
     const prompt = new Deno.Command(starship, {
       args: ["prompt", "--cmd-duration", "1233000"],
       cwd: sample.workspace.current_dir,
-      env: { STARSHIP_CONFIG: shell, STARSHIP_SHELL: "", STARSHIP_STATUSLINE_HOME: dir },
+      env: { STARSHIP_CONFIG: shell, STARSHIP_SHELL: "", CC_STARSHIP_HOME: dir },
       stdout: "piped",
       stderr: "null",
     }).outputSync();

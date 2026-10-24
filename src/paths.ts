@@ -1,5 +1,5 @@
 // Where things live on macOS and Windows. HOME / USERPROFILE and
-// STARSHIP_STATUSLINE_HOME can be pointed elsewhere, which the tests use.
+// CC_STARSHIP_HOME can be pointed elsewhere, which the tests use.
 import { join } from "node:path";
 
 export const isWindows = Deno.build.os === "windows";
@@ -12,15 +12,15 @@ export function home(): string {
 
 /** Install folder: binary, generated configs, theme choice, manifest, backups, usage. */
 export function installDir(): string {
-  const override = Deno.env.get("STARSHIP_STATUSLINE_HOME");
+  const override = Deno.env.get("CC_STARSHIP_HOME");
   if (override) return override;
   if (isWindows) {
-    return join(Deno.env.get("LOCALAPPDATA") ?? join(home(), "AppData", "Local"), "starship-statusline");
+    return join(Deno.env.get("LOCALAPPDATA") ?? join(home(), "AppData", "Local"), "cc-starship");
   }
-  return join(home(), ".local", "share", "starship-statusline");
+  return join(home(), ".local", "share", "cc-starship");
 }
 
-export const binName = isWindows ? "starship-statusline.exe" : "starship-statusline";
+export const binName = isWindows ? "cc-starship.exe" : "cc-starship";
 
 export const paths = {
   bin: () => join(installDir(), "bin", binName),

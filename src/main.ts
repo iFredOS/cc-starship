@@ -1,4 +1,4 @@
-// starship-statusline: installer, uninstaller and runtime for a Starship-rendered
+// cc-starship: installer, uninstaller and runtime for a Starship-rendered
 // Claude Code status bar and matching shell prompt.
 import { claudeStatusLine, doInstall, ensureStarship, previewLines, runUninstall, VERSION } from "./app.ts";
 import {
@@ -29,23 +29,23 @@ import { runUi } from "./tui.ts";
 import { usageText } from "./usage.ts";
 import { DEFAULT_HOOK_FROM, DEFAULT_PREFS, HOOK_FROM_CHOICES, type Prefs, resolvePrefs } from "./when.ts";
 
-const HELP = `starship-statusline ${VERSION}
+const HELP = `cc-starship ${VERSION}
 Claude Code status bar and shell prompt, rendered by Starship.
 
-  starship-statusline                  pick a preset with the keyboard and install it
-  starship-statusline install [--preset NAME] [--no-starship-update] [--no-hook]
-  starship-statusline uninstall        put back everything the installer changed
-  starship-statusline theme [NAME]     switch preset (prompt and status bar), or show the current one
-  starship-statusline presets          list presets
-  starship-statusline preview [NAME]   print a preset's status bar and shell prompt
-  starship-statusline status           what is installed: parts, Starship, Nerd Fonts
-  starship-statusline components [bar|shell|usage|hook|memory|terminal] [on|off]
-  starship-statusline font list | install ID | remove ID
-  starship-statusline starship update | remove
-  starship-statusline prefs [language auto|en|fr-CA] [clock auto|24h|12h] [hook-from 0|50|70|90]
-  starship-statusline statusline       (run by Claude Code) render the status bar from stdin
-  starship-statusline usage            (run by the shell prompt) print Claude usage
-  starship-statusline hook             (run by Claude Code) tell Claude its usage with each prompt`;
+  cc-starship                  pick a preset with the keyboard and install it
+  cc-starship install [--preset NAME] [--no-starship-update] [--no-hook]
+  cc-starship uninstall        put back everything the installer changed
+  cc-starship theme [NAME]     switch preset (prompt and status bar), or show the current one
+  cc-starship presets          list presets
+  cc-starship preview [NAME]   print a preset's status bar and shell prompt
+  cc-starship status           what is installed: parts, Starship, Nerd Fonts
+  cc-starship components [bar|shell|usage|hook|memory|terminal] [on|off]
+  cc-starship font list | install ID | remove ID
+  cc-starship starship update | remove
+  cc-starship prefs [language auto|en|fr-CA] [clock auto|24h|12h] [hook-from 0|50|70|90]
+  cc-starship statusline       (run by Claude Code) render the status bar from stdin
+  cc-starship usage            (run by the shell prompt) print Claude usage
+  cc-starship hook             (run by Claude Code) tell Claude its usage with each prompt`;
 
 async function status(): Promise<number> {
   const state = readInstalled();
@@ -295,7 +295,7 @@ if (import.meta.main) {
   try {
     Deno.exit(await main(Deno.args));
   } catch (e) {
-    console.error(`starship-statusline: ${e instanceof Error ? e.message : e}`);
+    console.error(`cc-starship: ${e instanceof Error ? e.message : e}`);
     Deno.exit(1);
   }
 }

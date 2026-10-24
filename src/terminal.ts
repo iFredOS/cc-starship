@@ -25,7 +25,7 @@ const exists = (path: string) => {
 
 /** Config files of the terminals on this machine (.json is Windows Terminal, else Ghostty style). */
 export function terminalFiles(): string[] {
-  const override = Deno.env.get("STARSHIP_STATUSLINE_TERMINALS");
+  const override = Deno.env.get("CC_STARSHIP_TERMINALS");
   if (override !== undefined) return override.split(";").filter(Boolean);
   if (isWindows) {
     const wt = windowsTerminalSettings();

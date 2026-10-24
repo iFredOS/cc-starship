@@ -76,14 +76,14 @@ Deno.test("zsh: history keeps one copy of each command, newest wins, shared acro
 });
 
 Deno.test("PowerShell block: remembers through Starship's pre-command hook and dedups history", () => {
-  const block = memoryBlock("powershell", "C:\\Users\\me\\AppData\\Local\\starship-statusline\\lastdir");
+  const block = memoryBlock("powershell", "C:\\Users\\me\\AppData\\Local\\cc-starship\\lastdir");
   for (
     const part of [
       "Invoke-Starship-PreCommand",
       "HistoryNoDuplicates",
       "HistorySavePath",
       "CLAUDECODE",
-      "C:\\Users\\me\\AppData\\Local\\starship-statusline\\lastdir",
+      "C:\\Users\\me\\AppData\\Local\\cc-starship\\lastdir",
     ]
   ) assertStringIncludes(block, part);
   assert(!/function\s+(global:)?Set-Location/i.test(block), "doesn't override cd");

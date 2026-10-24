@@ -5,7 +5,7 @@ const targets = Deno.args.length ? Deno.args : TARGETS;
 Deno.mkdirSync(new URL("../dist", import.meta.url), { recursive: true });
 for (const target of targets) {
   const exe = target.includes("windows") ? ".exe" : "";
-  const output = `dist/starship-statusline-${target}${exe}`;
+  const output = `dist/cc-starship-${target}${exe}`;
   const out = new Deno.Command("deno", {
     args: ["compile", "-A", "--target", target, "--output", output, "src/main.ts"],
     cwd: new URL("..", import.meta.url),

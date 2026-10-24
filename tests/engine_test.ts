@@ -26,10 +26,10 @@ function sandbox() {
   const env = {
     HOME: home,
     USERPROFILE: home,
-    STARSHIP_STATUSLINE_HOME: join(home, "install"),
-    STARSHIP_STATUSLINE_PROFILES: join(home, ".zshrc"),
+    CC_STARSHIP_HOME: join(home, "install"),
+    CC_STARSHIP_PROFILES: join(home, ".zshrc"),
     // Never the real terminal settings; tests that want some list them.
-    STARSHIP_STATUSLINE_TERMINALS: "",
+    CC_STARSHIP_TERMINALS: "",
   };
   const saved: Record<string, string | undefined> = {};
   for (const [k, v] of Object.entries(env)) {
@@ -335,7 +335,7 @@ Deno.test("shell memory: its own block in each profile, removed exactly when swi
     const before = sha(s.zshrc);
     await install("rainbow", { ...opts(s), components: { ...ALL_COMPONENTS, shell: false, memory: true } });
     const text = Deno.readTextFileSync(s.zshrc);
-    assertStringIncludes(text, "# >>> starship-statusline memory >>>");
+    assertStringIncludes(text, "# >>> cc-starship memory >>>");
     assertStringIncludes(text, join(s.installDir, "lastdir"));
     assert(!text.includes("init zsh"), "the prompt part is separate");
 
@@ -360,12 +360,12 @@ Deno.test("terminal settings: cmux/Ghostty get a block, removed exactly", async 
       cmux,
       'theme = "Midnight In Mojave"\nfont-family = "JetBrainsMono Nerd Font"\nfont-size = 18',
     );
-    Deno.env.set("STARSHIP_STATUSLINE_TERMINALS", cmux);
+    Deno.env.set("CC_STARSHIP_TERMINALS", cmux);
     const before = sha(cmux);
     await install("rainbow", { ...opts(s), components: { ...ALL_COMPONENTS, terminal: true } });
     const text = Deno.readTextFileSync(cmux);
     assert(text.startsWith('theme = "Midnight In Mojave"\n'), "the user's lines stay");
-    const block = text.slice(text.indexOf("# >>> starship-statusline terminal >>>"));
+    const block = text.slice(text.indexOf("# >>> cc-starship terminal >>>"));
     for (
       const line of [
         'font-family = ""',
@@ -399,7 +399,7 @@ Deno.test("terminal settings: Windows Terminal default font, per-profile fonts c
   try {
     const wt = join(s.home, "settings.json.wt.json");
     Deno.writeTextFileSync(wt, JSON.stringify(wtSettings, null, 4) + "\n");
-    Deno.env.set("STARSHIP_STATUSLINE_TERMINALS", wt);
+    Deno.env.set("CC_STARSHIP_TERMINALS", wt);
     const before = sha(wt);
     await install("rainbow", { ...opts(s), components: { ...ALL_COMPONENTS, terminal: true } });
     const on = JSON.parse(Deno.readTextFileSync(wt));
@@ -419,7 +419,7 @@ Deno.test("terminal settings: Windows Terminal edited since: fonts put back, oth
   try {
     const wt = join(s.home, "settings.json.wt.json");
     Deno.writeTextFileSync(wt, JSON.stringify(wtSettings, null, 4) + "\n");
-    Deno.env.set("STARSHIP_STATUSLINE_TERMINALS", wt);
+    Deno.env.set("CC_STARSHIP_TERMINALS", wt);
     await install("rainbow", { ...opts(s), components: { ...ALL_COMPONENTS, terminal: true } });
     const edited = JSON.parse(Deno.readTextFileSync(wt));
     edited.theme = "dark";
@@ -438,7 +438,7 @@ Deno.test("terminal settings: Windows Terminal with comments is left alone", asy
   try {
     const wt = join(s.home, "settings.json.wt.json");
     Deno.writeTextFileSync(wt, '{\n  // mine\n  "profiles": {}\n}\n');
-    Deno.env.set("STARSHIP_STATUSLINE_TERMINALS", wt);
+    Deno.env.set("CC_STARSHIP_TERMINALS", wt);
     const before = sha(wt);
     const report = await install("rainbow", {
       ...opts(s),
@@ -448,6 +448,23 @@ Deno.test("terminal settings: Windows Terminal with comments is left alone", asy
     assert(report.some((l) => l.includes("comments")), report.join("\n"));
     await uninstall();
     assertEquals(sha(wt), before);
+  } finally {
+    s.restore();
+  }
+});
+
+Deno.test("a hook left by the old starship-statusline name is replaced, not doubled", async () => {
+  const s = sandbox();
+  try {
+    const old = '"/Users/me/.local/share/starship-statusline/bin/starship-statusline" hook';
+    Deno.writeTextFileSync(
+      s.settings,
+      JSON.stringify({ hooks: { UserPromptSubmit: [{ hooks: [{ type: "command", command: old }] }] } }),
+    );
+    await install("rainbow", { ...opts(s), components: { ...ALL_COMPONENTS, hook: true } });
+    const groups = JSON.parse(Deno.readTextFileSync(s.settings)).hooks.UserPromptSubmit;
+    assertEquals(groups.length, 1, JSON.stringify(groups));
+    assert(!JSON.stringify(groups).includes("starship-statusline"));
   } finally {
     s.restore();
   }

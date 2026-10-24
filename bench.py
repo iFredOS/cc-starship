@@ -66,30 +66,30 @@ def payload() -> bytes:
 def install_binary(env) -> pathlib.Path:
     """Installs the compiled binary (deno task build) into the scratch home; returns its install folder."""
     arch = "aarch64" if platform.machine() == "arm64" else "x86_64"
-    binary = HERE / "dist" / f"starship-statusline-{arch}-apple-darwin"
+    binary = HERE / "dist" / f"cc-starship-{arch}-apple-darwin"
     if not binary.exists():
         raise SystemExit(f"{binary} not found: run `deno task build` first")
     subprocess.run([str(binary), "install", "--preset", "rainbow", "--no-starship-update"],
-                   env={**env, "STARSHIP_STATUSLINE_PROFILES": ""}, check=True, capture_output=True)
-    return pathlib.Path(env["HOME"]) / ".local/share/starship-statusline"
+                   env={**env, "CC_STARSHIP_PROFILES": ""}, check=True, capture_output=True)
+    return pathlib.Path(env["HOME"]) / ".local/share/cc-starship"
 
 
 def main() -> None:
     home = scratch_home()
     env = {**os.environ, "HOME": str(home)}
-    for key in ("CLAUDE_CONFIG_DIR", "STARSHIP_CONFIG", "STARSHIP_STATUSLINE_HOME"):
+    for key in ("CLAUDE_CONFIG_DIR", "STARSHIP_CONFIG", "CC_STARSHIP_HOME"):
         env.pop(key, None)
     installed = install_binary(env)
     data = payload()
     commands = {
         "oh-my-posh bar (full)": ["node", str(OMP_WRAPPER)],
-        "Starship bar (full)": [str(installed / "bin/starship-statusline"), "statusline"],
+        "Starship bar (full)": [str(installed / "bin/cc-starship"), "statusline"],
         "  node startup only": ["node", "-e", ""],
         "  oh-my-posh claude only": ["oh-my-posh", "claude", "--config", str(OMP_THEME)],
         "  starship prompt only": ["env", f"STARSHIP_CONFIG={installed / 'statusline.toml'}", "STARSHIP_SHELL=",
                                    "starship", "prompt"],
         "  git status only": ["git", "status", "--branch", "--porcelain", "--untracked-files=no"],
-        "  shell usage segment": [str(installed / "bin/starship-statusline"), "usage"],
+        "  shell usage segment": [str(installed / "bin/cc-starship"), "usage"],
     }
     silent = {"  node startup only", "  git status only", "  shell usage segment"}
 

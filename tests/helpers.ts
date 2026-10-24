@@ -10,7 +10,7 @@ export const fixture = JSON.parse(
 export const stripAnsi = (s: string) => s.replace(/\x1b\[[0-9;]*m/g, "");
 
 export function tempDir(): string {
-  return Deno.makeTempDirSync({ prefix: "starship-statusline-test-" });
+  return Deno.makeTempDirSync({ prefix: "cc-starship-test-" });
 }
 
 /** Renders the bar for `payload` with `presetId`, in a throwaway config dir. */
