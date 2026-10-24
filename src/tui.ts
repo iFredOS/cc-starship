@@ -1,11 +1,31 @@
-// The keyboard picker: ↑/↓ through presets with a live preview of the status bar
-// and shell prompt in this very terminal and font, Enter to install or apply,
-// U to uninstall, Q or Esc to quit without changing anything.
-import { doInstall, previewLines, runUninstall, VERSION } from "./app.ts";
-import { setTheme } from "./engine.ts";
-import { readState } from "./paths.ts";
+// The control panel, two screens switched with Tab:
+// - Looks: ↑/↓ through presets with a live preview of the status bar and shell
+//   prompt in this very terminal and font; Enter installs or switches.
+// - Components: switch the status bar, shell prompt and usage segment on or off,
+//   update or remove Starship, and install a Nerd Font.
+// Q or Esc quits without changing anything.
+import { doInstall, ensureStarship, previewLines, runUninstall, VERSION } from "./app.ts";
+import { ALL_COMPONENTS, type Components, readInstalled, setComponents, setTheme } from "./engine.ts";
+import {
+  detectNerdFonts,
+  fontFamilies,
+  FONTS,
+  installedByUs,
+  installFont,
+  setWindowsTerminalFont,
+  uninstallFont,
+  windowsTerminalSettings,
+} from "./fonts.ts";
+import { isWindows, paths } from "./paths.ts";
 import { allPresets, DEFAULT_PRESET, type Preset } from "./presets.ts";
-import { findStarship, latestVersion, type StarshipInfo, updatePlan } from "./starship.ts";
+import {
+  findStarship,
+  latestVersion,
+  runUpdate,
+  type StarshipInfo,
+  uninstallPlan,
+  updatePlan,
+} from "./starship.ts";
 
 const ESC = "\x1b";
 const bold = (s: string) => `${ESC}[1m${s}${ESC}[0m`;
@@ -18,7 +38,9 @@ const LIST_HEIGHT = 7;
 const EXPLAIN = {
   bar: [
     ["✻ model · ◐ effort level · \u{f02b} Claude Code version · \u{f007} signed-in account"],
-    ["\u{f07b} folder · \u{e725} branch or worktree (↑ ahead ↓ behind * uncommitted) · \u{f440} lines changed · \u{f017} session time"],
+    [
+      "\u{f07b} folder · \u{e725} branch or worktree (↑ ahead ↓ behind * uncommitted) · \u{f440} lines changed · \u{f017} session time",
+    ],
     [
       "\u{f1c0} context used (cost) · \u{f06d} prompt cache: minutes left · \u{f252} 5-hour limit · \u{f073} 7-day limit, with resets",
       "a percentage turns into an amber chip at 70%, a red ▲ chip at 90%",
@@ -33,9 +55,8 @@ const EXPLAIN = {
 export function previewBlock(lines: string[], opts: { explain: boolean }): string[] {
   const bar = lines.slice(0, -1);
   const prompt = lines[lines.length - 1] ?? "";
-  const caption = (
-    texts: string[] | undefined,
-  ) => (opts.explain ? (texts ?? []).map((t) => dim(`    ${t}`)) : []);
+  const caption = (texts: string[] | undefined) =>
+    opts.explain ? (texts ?? []).map((t) => dim(`    ${t}`)) : [];
   return [
     bold("Claude Code status bar"),
     ...bar.flatMap((line, i) => [`  ${line}`, ...caption(EXPLAIN.bar[i])]),
@@ -46,17 +67,73 @@ export function previewBlock(lines: string[], opts: { explain: boolean }): strin
   ];
 }
 
+export interface PanelInfo {
+  installed: boolean;
+  components: Components;
+  starship: StarshipInfo | null;
+  /** Latest Starship release; undefined while checking, null if unknown. */
+  latest: string | null | undefined;
+  /** Nerd Font families found on this machine. */
+  fonts: string[];
+}
+
+const ROWS = ["bar", "shell", "usage", "starship", "font"] as const;
+
+/** The Components screen's rows, `selected` marked. */
+export function componentLines(info: PanelInfo, selected: number): string[] {
+  const c = info.components;
+  const box = (on: boolean) => (on ? green("[x]") : "[ ]");
+  const s = info.starship;
+  const starshipStatus = !s
+    ? yellow("not installed: Enter downloads it")
+    : info.latest === undefined
+    ? `${s.version ?? "?"} ${dim("(checking for updates…)")}`
+    : info.latest && s.version && updatePlan(s, info.latest)
+    ? yellow(`${s.version} → ${info.latest} available: Enter updates`)
+    : green(`${s.version ?? "?"} ✓`) + dim(info.latest ? " latest" : "");
+  const rows = [
+    `${box(c.bar)} Claude Code status bar      ${dim("the 3-line bar inside Claude Code")}`,
+    `${box(c.shell)} Shell prompt                ${dim("Starship prompt in new terminal tabs")}`,
+    `${box(c.usage)} Claude usage in the prompt  ${
+      dim(c.shell ? "5h · 7d usage, saved by the status bar" : "needs the shell prompt")
+    }`,
+    `    Starship                    ${starshipStatus}`,
+    `    Nerd Font                   ${
+      info.fonts.length
+        ? green(fontFamilies(info.fonts).slice(0, 3).join(", "))
+        : yellow("none found: Enter to pick one")
+    }`,
+  ];
+  return rows.map((r, i) => (i === selected ? bold(`  ▸ `) + r : `    ${r}`));
+}
+
 const encoder = new TextEncoder();
 const write = (s: string) => Deno.stdout.writeSync(encoder.encode(s));
 
-type Key = "up" | "down" | "enter" | "quit" | "uninstall" | "yes" | "explain" | "other";
+type Key =
+  | "up"
+  | "down"
+  | "enter"
+  | "quit"
+  | "back"
+  | "tab"
+  | "space"
+  | "remove"
+  | "uninstall"
+  | "yes"
+  | "explain"
+  | "other";
 
 function parseKey(bytes: Uint8Array): Key {
   const s = new TextDecoder().decode(bytes);
   if (s === `${ESC}[A` || s === "k" || s === "w") return "up";
   if (s === `${ESC}[B` || s === "j" || s === "s") return "down";
   if (s === "\r" || s === "\n") return "enter";
-  if (s === ESC || s === "q" || s === "Q" || s === "\x03") return "quit";
+  if (s === ESC) return "back";
+  if (s === "q" || s === "Q" || s === "\x03") return "quit";
+  if (s === "\t") return "tab";
+  if (s === " ") return "space";
+  if (s === "x" || s === "X") return "remove";
   if (s === "u" || s === "U") return "uninstall";
   if (s === "y" || s === "Y") return "yes";
   if (s === "e" || s === "E" || s === "?") return "explain";
@@ -69,32 +146,28 @@ async function readKey(): Promise<Key> {
   return n === null ? "quit" : parseKey(buf.subarray(0, n));
 }
 
-function starshipLine(info: StarshipInfo | null, latest: string | null | undefined): string {
-  if (latest === undefined) {
-    return `Starship ${info?.version ?? "not found"} ${dim("(checking for updates…)")}`;
-  }
-  if (!info) return yellow(`Starship isn't installed: Enter will download ${latest ?? "it"} for you.`);
-  const plan = latest ? updatePlan(info, latest) : null;
-  if (!plan) return green(`Starship ${info.version} ✓`) + (latest ? dim(" (latest)") : "");
-  const how = plan.kind === "command" ? `with ${plan.command[0]}` : "by downloading it";
-  return yellow(`Starship ${info.version}: Enter will update it to ${latest} ${how}.`);
-}
-
 function fontHint(): string {
-  const icons = "\uf07b \ue725 \uf1c0 \uf06d \uf252 \uf073 \ue0b6\ue0b0\ue0b4";
+  const icons = "\u{f07b} \u{e725} \u{f1c0} \u{f06d} \u{f252} \u{f073} \u{e0b6}\u{e0b0}\u{e0b4}";
   const terminalApp = Deno.env.get("TERM_PROGRAM") === "Apple_Terminal";
   const tip = terminalApp
-    ? "Terminal.app's default font has none: open this from iTerm, Ghostty or cmux, or pick a Nerd Font in Terminal settings."
-    : "Boxes or ? instead of icons mean your terminal font isn't a Nerd Font.";
+    ? "Terminal.app's default font has none: pick a Nerd Font in Terminal settings, or use iTerm, Ghostty or cmux."
+    : "Boxes or ? instead of icons mean your terminal font isn't a Nerd Font (see Components).";
   return `Icons: ${icons}   ${dim(tip)}`;
 }
 
+type Screen = "looks" | "components" | "fonts";
+
 export async function runUi(): Promise<number> {
   const presets = allPresets();
-  let state = readState();
+  let state = readInstalled();
+  let components: Components = state?.components ?? { ...ALL_COMPONENTS };
   let index = Math.max(0, presets.findIndex((p) => p.id === (state?.theme ?? DEFAULT_PRESET)));
+  let screen: Screen = "looks";
+  let row = 0;
+  let fontRow = 0;
   let info = findStarship();
   let latest: string | null | undefined = undefined;
+  let fonts = detectNerdFonts();
   let message = "";
   let explain = true;
   const previews = new Map<string, string[]>();
@@ -103,20 +176,26 @@ export async function runUi(): Promise<number> {
     return previews.get(p.id)!;
   };
 
-  const draw = () => {
+  const header = () => {
+    const tab = (name: string, on: boolean) => (on ? bold(`[ ${name} ]`) : dim(`  ${name}  `));
+    return [
+      bold(`starship-statusline ${VERSION}`) + dim("  ·  Claude Code status bar + shell prompt"),
+      `${tab("Looks", screen === "looks")} ${tab("Components", screen !== "looks")}   ${dim("Tab switches")}`,
+      "",
+    ];
+  };
+
+  const looks = () => {
     const p = presets[index];
     const top = Math.min(
       Math.max(0, index - Math.floor(LIST_HEIGHT / 2)),
       Math.max(0, presets.length - LIST_HEIGHT),
     );
     const list = presets.slice(top, top + LIST_HEIGHT).map((q, i) => {
-      const at = top + i;
       const mark = q.id === state?.theme ? green(" ● in use") : "";
-      return at === index ? bold(`  ▸ ${q.name}`) + mark : `    ${q.name}${mark}`;
+      return top + i === index ? bold(`  ▸ ${q.name}`) + mark : `    ${q.name}${mark}`;
     });
-    const lines = [
-      bold(`starship-statusline ${VERSION}`) + dim("  ·  Claude Code status bar + shell prompt"),
-      "",
+    return [
       `Choose a look (${index + 1} of ${presets.length}):`,
       top > 0 ? dim("    ↑ more") : "",
       ...list,
@@ -128,7 +207,6 @@ export async function runUi(): Promise<number> {
         : [dim("  (the preview appears once Starship is installed)")]),
       "",
       fontHint(),
-      starshipLine(info, latest),
       state
         ? dim(`Installed · current look: ${presets.find((q) => q.id === state!.theme)?.name}`)
         : dim("Not installed yet"),
@@ -140,12 +218,167 @@ export async function runUi(): Promise<number> {
         } explanations   ${state ? "U uninstall   " : ""}Q quit`,
       ),
     ];
-    write(`${ESC}[H${ESC}[2J${lines.join("\r\n")}`);
+  };
+
+  const componentsScreen = () => [
+    state
+      ? "Switch parts on or off; changes apply right away."
+      : "Choose what to install, then pick a look and press Enter.",
+    "",
+    ...componentLines({ installed: !!state, components, starship: info, latest, fonts }, row),
+    "",
+    fontHint(),
+    "",
+    message ||
+    dim("↑/↓ choose   Space on/off   Enter update Starship / pick a font   X remove Starship   Q quit"),
+  ];
+
+  const ours = () => installedByUs().map((r) => r.id);
+  const fontsScreen = () => [
+    "Nerd Fonts give the status bar and prompt their icons.",
+    dim(
+      isWindows
+        ? "Installed for your user; Windows Terminal is switched to it when its settings allow."
+        : "Installed for your user; then choose it in your terminal's font settings.",
+    ),
+    "",
+    ...FONTS.map((f, i) => {
+      const status = fonts.includes(f.family)
+        ? green(ours().includes(f.id) ? "installed by this app" : "installed")
+        : dim("not installed");
+      const line = `${f.family.padEnd(28)} ${status}`;
+      return i === fontRow ? bold("  ▸ ") + line : `    ${line}`;
+    }),
+    "",
+    message || dim("↑/↓ choose   Enter install   X remove (fonts this app installed)   Esc back   Q quit"),
+  ];
+
+  const draw = () => {
+    const body = screen === "looks" ? looks() : screen === "components" ? componentsScreen() : fontsScreen();
+    write(`${ESC}[H${ESC}[2J${[...header(), ...body].join("\r\n")}`);
   };
 
   const prompt = async (text: string) => {
     write(`\r\n\r\n${text}`);
     return await readKey();
+  };
+
+  /** Runs `work` with normal terminal output, then waits for a key. */
+  const run = async (title: string, work: (log: (l: string) => void) => Promise<void> | void) => {
+    Deno.stdin.setRaw(false);
+    write(`\r\n\r\n${title}\r\n`);
+    try {
+      await work((l) => console.log(`  ${l}`));
+    } catch (e) {
+      console.log(yellow(`\n${e instanceof Error ? e.message : e}`));
+    }
+    Deno.stdin.setRaw(true);
+    await prompt("Press any key to continue.");
+    info = findStarship();
+    fonts = detectNerdFonts();
+    previews.clear();
+    state = readInstalled();
+  };
+
+  const toggle = async (key: "bar" | "shell" | "usage") => {
+    const next = { ...components, [key]: !components[key] };
+    if (key === "usage" && next.usage) next.shell = true;
+    if (!state) {
+      components = next;
+      return;
+    }
+    try {
+      await setComponents(next);
+      components = next;
+      message = green("✓ Saved: open a new terminal tab; Claude Code updates within a minute.");
+    } catch (e) {
+      message = yellow(e instanceof Error ? e.message : String(e));
+    }
+  };
+
+  const onComponentsKey = async (key: Key) => {
+    if (key === "up") row = (row - 1 + ROWS.length) % ROWS.length;
+    if (key === "down") row = (row + 1) % ROWS.length;
+    const name = ROWS[row];
+    if (key === "space" && (name === "bar" || name === "shell" || name === "usage")) await toggle(name);
+    if (key === "enter" && name === "font") {
+      screen = "fonts";
+      fontRow = 0;
+    }
+    if (key === "enter" && name === "starship") {
+      await run("Starship…", async (log) => {
+        await ensureStarship(true, log);
+      });
+    }
+    if (key === "remove" && name === "starship" && info) {
+      const plan = uninstallPlan(info);
+      if (!plan) {
+        message = yellow(
+          `Starship at ${info.path} wasn't installed by a known package manager; remove it yourself.`,
+        );
+        return;
+      }
+      const warn = state
+        ? " Your shell prompt and status bar need it, so uninstall them first (U on Looks)."
+        : "";
+      if (await prompt(yellow(`Remove Starship (${info.path})?${warn} (y/N) `)) !== "yes") return;
+      await run("Removing Starship…", (log) => {
+        if (plan.kind === "delete") {
+          Deno.removeSync(plan.path);
+          log(`removed ${plan.path}`);
+        } else if (!runUpdate(plan.command)) {
+          log(`${plan.command.join(" ")} failed`);
+        }
+      });
+    }
+  };
+
+  const onFontsKey = async (key: Key) => {
+    if (key === "up") fontRow = (fontRow - 1 + FONTS.length) % FONTS.length;
+    if (key === "down") fontRow = (fontRow + 1) % FONTS.length;
+    const font = FONTS[fontRow];
+    if (key === "enter") {
+      await run(`Installing ${font.family}…`, async (log) => {
+        (await installFont(font)).forEach(log);
+        const wt = isWindows ? windowsTerminalSettings() : null;
+        if (wt) {
+          const backup = setWindowsTerminalFont(font.family, wt, paths.backups());
+          log(
+            backup
+              ? `Windows Terminal now uses ${font.family} (previous settings saved as ${backup})`
+              : `Set it in Windows Terminal: Settings → Defaults → Appearance → Font face → ${font.family}`,
+          );
+        } else {
+          log(`Now choose "${font.family}" as the font in your terminal's settings.`);
+        }
+      });
+    }
+    if (key === "remove") {
+      if (!ours().includes(font.id)) {
+        message = yellow(`${font.family} wasn't installed by this app, so it stays.`);
+        return;
+      }
+      await run(`Removing ${font.family}…`, (log) => uninstallFont(font.id).forEach(log));
+    }
+  };
+
+  const onLooksKey = async (key: Key) => {
+    if (key === "explain") explain = !explain;
+    if (key === "up") index = (index - 1 + presets.length) % presets.length;
+    if (key === "down") index = (index + 1) % presets.length;
+    if (key === "enter") {
+      const p = presets[index];
+      if (state) {
+        await setTheme(p.id);
+        state = readInstalled();
+        message = green(`✓ ${p.name} is on: open a new terminal tab; Claude Code updates within a minute.`);
+      } else {
+        await run("Installing…", async (log) => {
+          await doInstall(p.id, true, log, components);
+          log(green(`Installed with ${p.name}. Open a new terminal tab, and restart Claude Code.`));
+        });
+      }
+    }
   };
 
   write(`${ESC}[?1049h${ESC}[?25l`);
@@ -156,47 +389,30 @@ export async function runUi(): Promise<number> {
       draw();
       message = "";
       const key = await readKey();
-      if (key === "quit") return 0;
-      if (key === "explain") explain = !explain;
-      if (key === "up") index = (index - 1 + presets.length) % presets.length;
-      if (key === "down") index = (index + 1) % presets.length;
-      if (key === "uninstall" && state) {
+      // Read through a function: the switch to "fonts" happens in callbacks TS can't follow.
+      const on = (name: Screen) => screen === name;
+      if (key === "quit" || (key === "back" && !on("fonts"))) return 0;
+      if (key === "back") {
+        screen = "components";
+        continue;
+      }
+      if (key === "tab") {
+        screen = screen === "looks" ? "components" : "looks";
+        continue;
+      }
+      if (key === "uninstall" && state && screen === "looks") {
         if (await prompt(yellow("Uninstall and put back your previous settings? (y/N) ")) !== "yes") continue;
-        Deno.stdin.setRaw(false);
-        write("\r\n\r\n");
-        const code = await runUninstall((l) => console.log(`  ${l}`));
-        console.log(
-          code === 0
-            ? green("\nUninstalled. Your previous prompt and status bar are back in new tabs.")
-            : yellow("\nUninstall stopped with an error (see above)."),
-        );
-        Deno.stdin.setRaw(true);
-        await prompt("Press any key to close.");
+        await run("Uninstalling…", async (log) => {
+          const code = await runUninstall(log);
+          log(
+            code === 0 ? green("Uninstalled. Your previous prompt and status bar are back in new tabs.") : "",
+          );
+        });
         return 0;
       }
-      if (key === "enter") {
-        const p = presets[index];
-        if (state) {
-          await setTheme(p.id);
-          message = green(`✓ ${p.name} is on: open a new terminal tab; Claude Code updates within a minute.`);
-        } else {
-          Deno.stdin.setRaw(false);
-          write("\r\n\r\nInstalling…\r\n");
-          try {
-            await doInstall(p.id, true, (l) => console.log(`  ${l}`));
-            console.log(
-              green(`\nInstalled with ${p.name}. Open a new terminal tab, and restart Claude Code.`),
-            );
-          } catch (e) {
-            console.log(yellow(`\nInstall failed: ${e instanceof Error ? e.message : e}`));
-          }
-          Deno.stdin.setRaw(true);
-          await prompt("Press any key to continue.");
-          info = findStarship();
-          previews.clear();
-        }
-        state = readState();
-      }
+      if (screen === "looks") await onLooksKey(key);
+      else if (screen === "components") await onComponentsKey(key);
+      else await onFontsKey(key);
     }
   } finally {
     try {

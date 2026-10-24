@@ -1,5 +1,5 @@
 import { assert, assertEquals } from "@std/assert";
-import { previewBlock } from "../src/tui.ts";
+import { componentLines, previewBlock } from "../src/tui.ts";
 import { stripAnsi } from "./helpers.ts";
 
 const sample = ["BAR1", "BAR2", "BAR3", "PROMPT"];
@@ -38,4 +38,35 @@ Deno.test("with explanations, each line is followed by what its parts mean", () 
   const lines = previewBlock(sample, { explain: true }).map(stripAnsi);
   assert(lines[lines.indexOf("  BAR1") + 1].includes("model"));
   assert(lines[lines.indexOf("  PROMPT") + 1].includes("user"));
+});
+
+const base = {
+  installed: true,
+  components: { bar: true, shell: true, usage: true },
+  starship: { path: "/opt/homebrew/bin/starship", version: "1.27.0", managedBy: "brew" as const },
+  latest: "1.27.0" as string | null | undefined,
+  fonts: ["JetBrainsMono Nerd Font"],
+};
+
+Deno.test("components panel: switches, Starship version and font", () => {
+  const text = componentLines(base, 0).map(stripAnsi).join("\n");
+  assert(text.includes("[x] Claude Code status bar"), text);
+  assert(text.includes("[x] Shell prompt"));
+  assert(text.includes("[x] Claude usage in the prompt"));
+  assert(text.includes("1.27.0") && text.includes("latest"));
+  assert(text.includes("JetBrainsMono Nerd Font"));
+  assert(stripAnsi(componentLines(base, 0)[0]).includes("▸"), "selected row marked");
+});
+
+Deno.test("components panel: update available, missing Starship, usage needing the prompt", () => {
+  const outdated = componentLines({ ...base, starship: { ...base.starship, version: "1.26.0" } }, 3)
+    .map(stripAnsi).join("\n");
+  assert(outdated.includes("1.26.0 → 1.27.0"), outdated);
+  const missing = componentLines({ ...base, starship: null }, 3).map(stripAnsi).join("\n");
+  assert(missing.includes("not installed"), missing);
+  const noShell = componentLines({ ...base, components: { bar: true, shell: false, usage: true } }, 0)
+    .map(stripAnsi).join("\n");
+  assert(noShell.includes("[ ] Shell prompt") && noShell.includes("needs the shell prompt"), noShell);
+  const noFont = componentLines({ ...base, fonts: [] }, 4).map(stripAnsi).join("\n");
+  assert(noFont.includes("none found"), noFont);
 });

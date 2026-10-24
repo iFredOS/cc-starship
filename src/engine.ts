@@ -121,7 +121,7 @@ function readSettings(path: string): Record<string, unknown> | null {
   if (!lstat(path)) return null;
   const text = readText(path);
   try {
-    return JSON.parse(text.replace(/^﻿/, ""));
+    return JSON.parse(text.replace(/^\uFEFF/, ""));
   } catch {
     throw new Error(
       `${path} has comments or trailing commas. Claude Code accepts them, but this installer can't ` +
@@ -186,7 +186,7 @@ function unhookProfile(entry: ProfileEntry): string {
   const at = text.lastIndexOf(entry.block);
   if (at < 0) return `${entry.path}: the starship-statusline block was edited; remove it yourself`;
   const rest = text.slice(0, at) + text.slice(at + entry.block.length);
-  if (entry.created && rest.replace(/^﻿/, "") === "") {
+  if (entry.created && rest.replace(/^\uFEFF/, "") === "") {
     Deno.removeSync(entry.path);
     return `${entry.path}: removed (the installer created it)`;
   }
@@ -194,7 +194,27 @@ function unhookProfile(entry: ProfileEntry): string {
   return `${entry.path}: removed the starship-statusline block`;
 }
 
-// ── Public operations ────────────────────────────────────────────────────
+// ── Components ───────────────────────────────────────────────────────────
+
+/** What can be switched on and off. `usage` needs `shell` (and `bar` to have data). */
+export interface Components {
+  bar: boolean;
+  shell: boolean;
+  usage: boolean;
+}
+
+export const ALL_COMPONENTS: Components = { bar: true, shell: true, usage: true };
+
+export interface InstalledState extends State {
+  bin: string;
+  components: Components;
+}
+
+/** The installed state, or null when not installed. */
+export function readInstalled(): InstalledState | null {
+  const s = readState() as InstalledState | null;
+  return s ? { ...s, components: s.components ?? ALL_COMPONENTS } : null;
+}
 
 function preset(id: string): Preset {
   const p = findPreset(id);
@@ -202,24 +222,105 @@ function preset(id: string): Preset {
   return p;
 }
 
-function writeConfigs(p: Preset, state: State & { bin: string }, manifest: Manifest): void {
-  writeText(paths.barConfig(), barConfig(p));
-  writeText(paths.state(), JSON.stringify(state, null, 2) + "\n");
-  const entry = manifest.starshipConfig!;
+function addShell(p: Preset, state: InstalledState, manifest: Manifest, report: string[]): void {
+  const path = paths.starshipConfig();
+  manifest.starshipConfig ??= { path, prior: recordPrior(path, "starship.toml"), written: "" };
+  const entry = manifest.starshipConfig;
   const now = currentSha(entry.path);
-  if (now !== null && now !== entry.written) {
+  if (now !== null && entry.written && now !== entry.written) {
     // Edited by hand since we wrote it: keep a copy before replacing it.
     Deno.copyFileSync(entry.path, join(paths.backups(), `starship.toml.edited-${Date.now()}`));
   }
-  entry.written = writeOwned(entry.path, shellConfig(p, state.bin));
+  entry.written = writeOwned(entry.path, shellConfig(p, state.bin, { usage: state.components.usage }));
+  report.push(`${entry.path}: ${p.name} shell prompt`);
+  for (const profile of shellProfiles()) {
+    if (manifest.profiles.some((e) => e.path === profile)) continue;
+    const hooked = hookProfile(profile, state.starship);
+    if (hooked) {
+      manifest.profiles.push(hooked);
+      report.push(`${profile}: added Starship start-up`);
+    } else {
+      report.push(`${profile}: already starts Starship, left as is`);
+    }
+  }
 }
 
-export async function install(presetId: string, o: InstallOptions): Promise<string[]> {
-  const p = preset(presetId);
-  const settingsPath = paths.claudeSettings();
-  const settings = readSettings(settingsPath); // throws before anything is written
-  const report: string[] = [];
+function removeShell(manifest: Manifest, report: string[]): void {
+  const entry = manifest.starshipConfig;
+  if (entry) {
+    if (currentSha(entry.path) !== null && currentSha(entry.path) !== entry.written) {
+      const kept = `${entry.path}.edited-${Date.now()}`;
+      Deno.copyFileSync(entry.path, kept);
+      report.push(`${entry.path}: you had edited it; your version is saved as ${kept}`);
+    }
+    restorePrior(entry.path, entry.prior);
+    report.push(`${entry.path}: restored`);
+    delete manifest.starshipConfig;
+  }
+  for (const profile of manifest.profiles) report.push(unhookProfile(profile));
+  manifest.profiles = [];
+}
 
+function addBar(state: InstalledState, manifest: Manifest, report: string[]): void {
+  const path = paths.claudeSettings();
+  const settings = readSettings(path);
+  manifest.settings ??= {
+    path,
+    prior: recordPrior(path, "settings.json"),
+    written: "",
+    hadStatusLine: settings !== null && "statusLine" in settings,
+    priorStatusLine: settings?.statusLine ?? null,
+  };
+  const data = settings ?? {};
+  data.statusLine = {
+    type: "command",
+    command: statusLineCommand(state.bin),
+    padding: 0,
+    refreshInterval: 60,
+  };
+  manifest.settings.written = writeOwned(path, JSON.stringify(data, null, 2) + "\n");
+  report.push(`${path}: statusLine runs ${state.bin}`);
+}
+
+function removeBar(manifest: Manifest, report: string[]): void {
+  const entry = manifest.settings;
+  if (!entry) return;
+  if (currentSha(entry.path) === entry.written || !lstat(entry.path)) {
+    restorePrior(entry.path, entry.prior);
+    report.push(`${entry.path}: restored`);
+  } else {
+    // Edited since install: keep the edits, put back only the statusLine.
+    const data = readSettings(entry.path) ?? {};
+    if (entry.hadStatusLine) data.statusLine = entry.priorStatusLine;
+    else delete data.statusLine;
+    writeText(entry.path, JSON.stringify(data, null, 2) + "\n");
+    report.push(`${entry.path}: statusLine restored, your other changes kept`);
+  }
+  delete manifest.settings;
+}
+
+/** Brings the files in line with `state`: its preset, and each component on or off. */
+function apply(state: InstalledState, manifest: Manifest, report: string[]): void {
+  const p = preset(state.theme);
+  writeText(paths.barConfig(), barConfig(p));
+  writeText(paths.state(), JSON.stringify(state, null, 2) + "\n");
+  if (state.components.shell) addShell(p, state, manifest, report);
+  else removeShell(manifest, report);
+  if (state.components.bar) addBar(state, manifest, report);
+  else removeBar(manifest, report);
+  saveManifest(manifest);
+}
+
+// ── Public operations ────────────────────────────────────────────────────
+
+export async function install(
+  presetId: string,
+  o: InstallOptions & { components?: Components },
+): Promise<string[]> {
+  preset(presetId);
+  const components = o.components ?? readInstalled()?.components ?? ALL_COMPONENTS;
+  if (components.bar) readSettings(paths.claudeSettings()); // throws before anything is written
+  const report: string[] = [];
   const manifest = readManifest() ?? { version: 1, installedAt: new Date().toISOString(), profiles: [] };
   Deno.mkdirSync(paths.backups(), { recursive: true });
 
@@ -230,88 +331,41 @@ export async function install(presetId: string, o: InstallOptions): Promise<stri
     report.push(`installed ${o.bin}`);
   }
 
-  const starshipPath = paths.starshipConfig();
-  manifest.starshipConfig ??= {
-    path: starshipPath,
-    prior: recordPrior(starshipPath, "starship.toml"),
-    written: "",
-  };
-  writeConfigs(p, { theme: p.id, starship: o.starship, bin: o.bin }, manifest);
-  report.push(`${starshipPath}: ${p.name} shell prompt`);
-
-  if (!manifest.settings) {
-    manifest.settings = {
-      path: settingsPath,
-      prior: recordPrior(settingsPath, "settings.json"),
-      written: "",
-      hadStatusLine: settings !== null && "statusLine" in settings,
-      priorStatusLine: settings?.statusLine ?? null,
-    };
-  }
-  const data = settings ?? {};
-  data.statusLine = { type: "command", command: statusLineCommand(o.bin), padding: 0, refreshInterval: 60 };
-  manifest.settings.written = writeOwned(settingsPath, JSON.stringify(data, null, 2) + "\n");
-  report.push(`${settingsPath}: statusLine runs ${o.bin}`);
-
-  for (const profile of shellProfiles()) {
-    if (manifest.profiles.some((e) => e.path === profile)) continue;
-    const entry = hookProfile(profile, o.starship);
-    if (entry) {
-      manifest.profiles.push(entry);
-      report.push(`${profile}: added Starship start-up`);
-    } else {
-      report.push(`${profile}: already starts Starship, left as is`);
-    }
-  }
-
-  saveManifest(manifest);
+  apply({ theme: presetId, starship: o.starship, bin: o.bin, components }, manifest, report);
   // A later Claude Code session or shell picks everything up; nothing to restart now.
   return await Promise.resolve(report);
 }
 
-export async function setTheme(presetId: string): Promise<void> {
-  const p = preset(presetId);
-  const state = readState() as (State & { bin: string }) | null;
+function installed(): { state: InstalledState; manifest: Manifest } {
+  const state = readInstalled();
   const manifest = readManifest();
-  if (!state || !manifest?.starshipConfig) throw new Error("not installed yet: run install first");
-  writeConfigs(p, { ...state, theme: p.id }, manifest);
-  saveManifest(manifest);
-  await Promise.resolve();
+  if (!state || !manifest) throw new Error("not installed yet: run install first");
+  return { state, manifest };
+}
+
+export async function setTheme(presetId: string): Promise<string[]> {
+  preset(presetId);
+  const { state, manifest } = installed();
+  const report: string[] = [];
+  apply({ ...state, theme: presetId }, manifest, report);
+  return await Promise.resolve(report);
+}
+
+/** Switches components on or off; each one switched off is restored exactly. */
+export async function setComponents(components: Components): Promise<string[]> {
+  const { state, manifest } = installed();
+  if (components.bar) readSettings(paths.claudeSettings()); // throws before anything is written
+  const report: string[] = [];
+  apply({ ...state, components }, manifest, report);
+  return await Promise.resolve(report);
 }
 
 export async function uninstall(): Promise<string[]> {
   const manifest = readManifest();
   if (!manifest) throw new Error(`nothing to uninstall: no manifest in ${installDir()}`);
   const report: string[] = [];
-
-  const sc = manifest.starshipConfig;
-  if (sc) {
-    if (currentSha(sc.path) !== null && currentSha(sc.path) !== sc.written) {
-      const kept = `${sc.path}.edited-${Date.now()}`;
-      Deno.copyFileSync(sc.path, kept);
-      report.push(`${sc.path}: you had edited it; your version is saved as ${kept}`);
-    }
-    restorePrior(sc.path, sc.prior);
-    report.push(`${sc.path}: restored`);
-  }
-
-  const st = manifest.settings;
-  if (st) {
-    if (currentSha(st.path) === st.written || !lstat(st.path)) {
-      restorePrior(st.path, st.prior);
-      report.push(`${st.path}: restored`);
-    } else {
-      // Edited since install: keep the edits, put back only the statusLine.
-      const data = readSettings(st.path) ?? {};
-      if (st.hadStatusLine) data.statusLine = st.priorStatusLine;
-      else delete data.statusLine;
-      writeText(st.path, JSON.stringify(data, null, 2) + "\n");
-      report.push(`${st.path}: statusLine restored, your other changes kept`);
-    }
-  }
-
-  for (const entry of manifest.profiles) report.push(unhookProfile(entry));
-
+  removeShell(manifest, report);
+  removeBar(manifest, report);
   removeInstallDir();
   report.push(`${installDir()}: removed`);
   return await Promise.resolve(report);

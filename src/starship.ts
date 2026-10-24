@@ -95,8 +95,22 @@ export function findStarship(): StarshipInfo | null {
   return null;
 }
 
+/**
+ * The newest Starship release. Reads where github.com/…/releases/latest redirects
+ * (no API rate limit), falling back to the API; gives up after 5 seconds.
+ */
 export async function latestVersion(): Promise<string> {
-  const res = await fetch(RELEASES, { headers: { Accept: "application/vnd.github+json" } });
+  const page = await fetch("https://github.com/starship/starship/releases/latest", {
+    method: "HEAD",
+    redirect: "manual",
+    signal: AbortSignal.timeout(5000),
+  });
+  const tag = page.headers.get("location")?.match(/\/tag\/v?(\d+\.\d+\.\d+)/)?.[1];
+  if (tag) return tag;
+  const res = await fetch(RELEASES, {
+    headers: { Accept: "application/vnd.github+json" },
+    signal: AbortSignal.timeout(5000),
+  });
   if (!res.ok) throw new Error(`GitHub releases: HTTP ${res.status}`);
   return (await res.json()).tag_name.replace(/^v/, "");
 }
@@ -128,7 +142,28 @@ export async function downloadStarship(binDir = join(installDir(), "bin")): Prom
   return exe;
 }
 
-/** Runs a package manager's update command, streaming its output. */
+export type UninstallPlan = { kind: "command"; command: string[] } | { kind: "delete"; path: string } | null;
+
+/** How to remove Starship: delete our own download, or ask its package manager; null if unknown. */
+export function uninstallPlan(info: StarshipInfo): UninstallPlan {
+  switch (info.managedBy) {
+    case "ours":
+      return { kind: "delete", path: info.path };
+    case "brew":
+      return { kind: "command", command: ["brew", "uninstall", "starship"] };
+    case "winget":
+      return {
+        kind: "command",
+        command: ["winget", "uninstall", "--id", "Starship.Starship", "--exact", "--silent"],
+      };
+    case "scoop":
+      return { kind: "command", command: ["scoop", "uninstall", "starship"] };
+    default:
+      return null;
+  }
+}
+
+/** Runs a package manager's command, streaming its output. */
 export function runUpdate(command: string[]): boolean {
   const out = new Deno.Command(command[0], { args: command.slice(1), stdout: "inherit", stderr: "inherit" })
     .outputSync();

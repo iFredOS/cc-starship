@@ -44,8 +44,11 @@ function fill(template: string, values: Record<string, string>): string {
   });
 }
 
-/** Starship config for the shell prompt; `bin` is the installed binary (for usage). */
-export function shellConfig(preset: Preset, bin: string): string {
+/**
+ * Starship config for the shell prompt. `bin` is the installed binary, which the
+ * usage segment runs; `usage: false` leaves that segment out.
+ */
+export function shellConfig(preset: Preset, bin: string, opts: { usage?: boolean } = {}): string {
   const colors: Record<string, string> = { ...PROMPT_COLORS };
   preset.shell.segments.forEach((s, i) => {
     colors[`s${i + 1}_bg`] = s.bg;
@@ -56,6 +59,7 @@ export function shellConfig(preset: Preset, bin: string): string {
     THEME: preset.id,
     PALETTE: palette(preset.id, colors),
     BIN: bin.replaceAll("\\", "/"),
+    USAGE: opts.usage === false ? "" : "${custom.claude}",
   });
 }
 

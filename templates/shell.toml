@@ -24,8 +24,7 @@ $python\
 [](fg:s4_bg bg:s5_bg)\
 $docker_context\
 $conda\
-$pixi\
-${custom.claude}\
+$pixi{{USAGE}}\
 [](fg:s5_bg bg:s6_bg)\
 $cmd_duration\
 $status\

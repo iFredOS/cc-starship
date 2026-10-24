@@ -1,7 +1,7 @@
 import { assert, assertEquals, assertRejects, assertStringIncludes } from "@std/assert";
 import { createHash } from "node:crypto";
 import { join } from "node:path";
-import { install, setTheme, uninstall } from "../src/engine.ts";
+import { install, setComponents, setTheme, uninstall } from "../src/engine.ts";
 import { tempDir } from "./helpers.ts";
 
 const sha = (path: string) => {
@@ -192,3 +192,31 @@ function exists(path: string): boolean {
     return false;
   }
 }
+
+Deno.test("components: bar only leaves the shell alone; toggling restores each part exactly", async () => {
+  const s = sandbox();
+  try {
+    Deno.writeTextFileSync(s.starship, "# mine\n");
+    Deno.writeTextFileSync(s.settings, '{"model": "opus"}\n');
+    Deno.writeTextFileSync(s.zshrc, "export A=1\n");
+    const [starship0, settings0, zshrc0] = [s.starship, s.settings, s.zshrc].map(sha);
+
+    await install("rainbow", { ...opts(s), components: { bar: true, shell: false, usage: false } });
+    assertEquals(sha(s.starship), starship0, "shell prompt untouched");
+    assertEquals(sha(s.zshrc), zshrc0, "profile untouched");
+    assertStringIncludes(Deno.readTextFileSync(s.settings), "statusline");
+
+    await setComponents({ bar: true, shell: true, usage: true });
+    assertStringIncludes(Deno.readTextFileSync(s.starship), "${custom.claude}");
+    assertStringIncludes(Deno.readTextFileSync(s.zshrc), "init zsh");
+
+    await setComponents({ bar: false, shell: true, usage: false });
+    assertEquals(sha(s.settings), settings0, "status bar off: settings.json back exactly");
+    assert(!Deno.readTextFileSync(s.starship).includes("${custom.claude}"), "usage segment gone");
+
+    await uninstall();
+    assertEquals([s.starship, s.settings, s.zshrc].map(sha), [starship0, settings0, zshrc0]);
+  } finally {
+    s.restore();
+  }
+});

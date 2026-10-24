@@ -1,7 +1,14 @@
 import { assert, assertEquals } from "@std/assert";
 import { join } from "node:path";
-import { assetName, compareVersions, managedBy, parseVersion, updatePlan } from "../src/starship.ts";
-import { downloadStarship } from "../src/starship.ts";
+import {
+  assetName,
+  compareVersions,
+  managedBy,
+  parseVersion,
+  uninstallPlan,
+  updatePlan,
+} from "../src/starship.ts";
+import { downloadStarship, latestVersion } from "../src/starship.ts";
 import { tempDir } from "./helpers.ts";
 
 Deno.test("parses `starship --version`", () => {
@@ -71,5 +78,36 @@ Deno.test({
     const path = await downloadStarship(join(dir, "bin"));
     const out = new Deno.Command(path, { args: ["--version"] }).outputSync();
     assert(parseVersion(new TextDecoder().decode(out.stdout)));
+  },
+});
+
+Deno.test("uninstall plan: our own copy is deleted, a package manager's goes through it", () => {
+  assertEquals(uninstallPlan({ path: "/x/bin/starship", version: "1.27.0", managedBy: "ours" }), {
+    kind: "delete",
+    path: "/x/bin/starship",
+  });
+  assertEquals(uninstallPlan({ path: "/opt/homebrew/bin/starship", version: "1.27.0", managedBy: "brew" }), {
+    kind: "command",
+    command: ["brew", "uninstall", "starship"],
+  });
+  assertEquals(
+    uninstallPlan({
+      path: "C:\\Program Files\\starship\\bin\\starship.exe",
+      version: "1",
+      managedBy: "winget",
+    }),
+    { kind: "command", command: ["winget", "uninstall", "--id", "Starship.Starship", "--exact", "--silent"] },
+  );
+  assertEquals(uninstallPlan({ path: "/usr/bin/starship", version: "1", managedBy: "unknown" }), null);
+});
+
+Deno.test({
+  name: "finds the latest Starship version quickly (network)",
+  ignore: Deno.env.get("NETWORK") !== "1",
+  fn: async () => {
+    const start = Date.now();
+    const version = await latestVersion();
+    assert(/^\d+\.\d+\.\d+$/.test(version), version);
+    assert(Date.now() - start < 5000, `${Date.now() - start} ms`);
   },
 });

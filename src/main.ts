@@ -1,10 +1,19 @@
 // starship-statusline: installer, uninstaller and runtime for a Starship-rendered
 // Claude Code status bar and matching shell prompt.
-import { doInstall, previewLines, runUninstall, VERSION } from "./app.ts";
-import { setTheme } from "./engine.ts";
+import { doInstall, ensureStarship, previewLines, runUninstall, VERSION } from "./app.ts";
+import { readInstalled, setComponents, setTheme } from "./engine.ts";
+import {
+  detectNerdFonts,
+  fontFamilies,
+  FONTS,
+  installedByUs,
+  installFont,
+  uninstallFont,
+  windowsTerminalSettings,
+} from "./fonts.ts";
 import { paths, readState } from "./paths.ts";
 import { allPresets, DEFAULT_PRESET, findPreset } from "./presets.ts";
-import { findStarship } from "./starship.ts";
+import { findStarship, latestVersion, runUpdate, uninstallPlan, updatePlan } from "./starship.ts";
 import { readAccountEmail, renderBar } from "./statusline.ts";
 import { runUi } from "./tui.ts";
 import { usageText } from "./usage.ts";
@@ -18,8 +27,106 @@ Claude Code status bar and shell prompt, rendered by Starship.
   starship-statusline theme [NAME]     switch preset (prompt and status bar), or show the current one
   starship-statusline presets          list presets
   starship-statusline preview [NAME]   print a preset's status bar and shell prompt
+  starship-statusline status           what is installed: parts, Starship, Nerd Fonts
+  starship-statusline components [bar|shell|usage] [on|off]
+  starship-statusline font list | install ID | remove ID
+  starship-statusline starship update | remove
   starship-statusline statusline       (run by Claude Code) render the status bar from stdin
   starship-statusline usage            (run by the shell prompt) print Claude usage`;
+
+async function status(): Promise<number> {
+  const state = readInstalled();
+  const info = findStarship();
+  let latest: string | null = null;
+  try {
+    latest = await latestVersion();
+  } catch {
+    // offline
+  }
+  const on = (b: boolean) => (b ? "on" : "off");
+  console.log(`installed:  ${state ? `yes, ${findPreset(state.theme)?.name}` : "no"}`);
+  if (state) {
+    const c = state.components;
+    console.log(`parts:      status bar ${on(c.bar)}, shell prompt ${on(c.shell)}, usage ${on(c.usage)}`);
+  }
+  const update = info && latest && updatePlan(info, latest) ? ` (update to ${latest} available)` : "";
+  console.log(
+    `starship:   ${info ? `${info.version} via ${info.managedBy}, ${info.path}${update}` : "not found"}`,
+  );
+  console.log(`nerd fonts: ${fontFamilies(detectNerdFonts()).join(", ") || "none found"}`);
+  const wt = windowsTerminalSettings();
+  if (wt) {
+    let plain = true;
+    try {
+      JSON.parse(Deno.readTextFileSync(wt).replace(/^﻿/, ""));
+    } catch {
+      plain = false;
+    }
+    console.log(
+      `terminal:   Windows Terminal, ${
+        plain ? "font can be set automatically" : "settings have comments: set the font by hand"
+      }`,
+    );
+  }
+  return 0;
+}
+
+async function componentsCommand(args: string[]): Promise<number> {
+  const state = readInstalled();
+  if (!state) throw new Error("not installed yet: run install first");
+  const [name, value] = args;
+  if (!name) {
+    console.log(JSON.stringify(state.components));
+    return 0;
+  }
+  if (!["bar", "shell", "usage"].includes(name) || !["on", "off"].includes(value)) {
+    throw new Error("usage: components bar|shell|usage on|off");
+  }
+  const next = { ...state.components, [name]: value === "on" };
+  (await setComponents(next)).forEach((l) => console.log(`  ${l}`));
+  return 0;
+}
+
+async function fontCommand(args: string[], log: (l: string) => void): Promise<number> {
+  const [action, id] = args;
+  if (!action || action === "list") {
+    const found = detectNerdFonts();
+    const ours = installedByUs().map((r) => r.id);
+    for (const f of FONTS) {
+      const mark = found.includes(f.family)
+        ? (ours.includes(f.id) ? "installed by this app" : "installed")
+        : "";
+      console.log(`${f.id.padEnd(10)} ${f.family.padEnd(26)} ${mark}`);
+    }
+    return 0;
+  }
+  const font = FONTS.find((f) => f.id === id);
+  if (!font) throw new Error(`unknown font "${id}" (see: font list)`);
+  if (action === "install") (await installFont(font)).forEach(log);
+  else if (action === "remove") uninstallFont(font.id).forEach(log);
+  else throw new Error("usage: font list | install ID | remove ID");
+  return 0;
+}
+
+async function starshipCommand(action: string | undefined, log: (l: string) => void): Promise<number> {
+  if (action === "update") {
+    await ensureStarship(true, log);
+    return 0;
+  }
+  if (action === "remove") {
+    const info = findStarship();
+    if (!info) throw new Error("Starship isn't installed");
+    const plan = uninstallPlan(info);
+    if (!plan) {
+      throw new Error(`${info.path} wasn't installed by a known package manager; remove it yourself`);
+    }
+    if (plan.kind === "delete") Deno.removeSync(plan.path);
+    else if (!runUpdate(plan.command)) return 1;
+    log(`removed Starship (${info.path})`);
+    return 0;
+  }
+  throw new Error("usage: starship update | remove");
+}
 
 async function statusline(): Promise<void> {
   const text = await new Response(Deno.stdin.readable).text();
@@ -89,6 +196,14 @@ export async function main(args: string[]): Promise<number> {
     case "presets":
       for (const p of allPresets()) console.log(`${p.id.padEnd(18)} ${p.name}`);
       return 0;
+    case "status":
+      return await status();
+    case "components":
+      return await componentsCommand(args.slice(1));
+    case "font":
+      return await fontCommand(args.slice(1), log);
+    case "starship":
+      return await starshipCommand(args[1], log);
     case "preview": {
       const preset = findPreset(args[1] ?? readState()?.theme ?? DEFAULT_PRESET);
       if (!preset) throw new Error(`unknown preset "${args[1]}"`);

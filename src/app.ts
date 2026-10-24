@@ -1,6 +1,6 @@
 // Steps shared by the command line and the keyboard picker.
 import { basename, join } from "node:path";
-import { install, runningFromInstallDir, uninstall } from "./engine.ts";
+import { type Components, install, runningFromInstallDir, uninstall } from "./engine.ts";
 import { isWindows, paths, readState } from "./paths.ts";
 import { barConfig, type Preset, shellConfig } from "./presets.ts";
 import { downloadStarship, findStarship, latestVersion, runUpdate, updatePlan } from "./starship.ts";
@@ -52,12 +52,14 @@ export async function doInstall(
   presetId: string,
   update: boolean,
   log: (line: string) => void,
+  components?: Components,
 ): Promise<void> {
   const starship = await ensureStarship(update, log);
   const report = await install(presetId, {
     starship,
     bin: compiled ? paths.bin() : Deno.execPath(),
     copySelf: compiled,
+    components,
   });
   report.forEach(log);
 }

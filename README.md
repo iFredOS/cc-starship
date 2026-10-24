@@ -7,25 +7,39 @@ program installs, switches and uninstalls everything, on macOS and Windows.
 ## Use
 
 Run the program for your system from `dist/` (see Build) with no arguments. It
-opens a picker:
+opens a control panel with two screens; Tab switches between them.
 
-- ↑/↓ choose a look, with a live preview of the status bar and the shell
-  prompt, each explained part by part (E hides the explanations)
+**Looks**
+- ↑/↓ choose one of 15 looks, with a live preview of the status bar and the
+  shell prompt, each explained part by part (E hides the explanations)
 - Enter installs with that look, or switches to it once installed
 - U uninstalls and puts back everything the installer changed
-- Q or Esc quits without changing anything
 
-Run it from the terminal you normally use: the preview shows exactly what that
-terminal and its font will draw. Boxes instead of icons mean the font isn't a
-Nerd Font.
+**Components**
+- Space switches a part on or off: the Claude Code status bar, the shell
+  prompt, the Claude usage segment in the prompt. Before installing, this
+  chooses what gets installed; afterwards it applies right away, and a part
+  switched off is restored exactly
+- Starship shows its version and whether a newer one exists; Enter updates it
+  (through brew, winget or Scoop when they installed it, otherwise by
+  downloading the release), X removes it
+- Nerd Font shows which are installed; Enter opens a list of five to install
+  for your user (on Windows, Windows Terminal is switched to it when its
+  settings file allows), X removes one this app installed
 
-The same actions as commands:
+Q or Esc quits without changing anything. Run it from the terminal you normally
+use: the preview shows exactly what that terminal and its font will draw.
+
+The same actions as commands, for scripts or remote machines:
 
 ```sh
 starship-statusline install [--preset NAME] [--no-starship-update]
-starship-statusline theme [NAME]      # switch, or show the current preset
-starship-statusline presets
-starship-statusline preview [NAME]
+starship-statusline theme [NAME]                    # switch, or show the current preset
+starship-statusline components [bar|shell|usage] [on|off]
+starship-statusline status                          # parts, Starship, Nerd Fonts
+starship-statusline font list | install ID | remove ID
+starship-statusline starship update | remove
+starship-statusline presets | preview [NAME]
 starship-statusline uninstall
 ```
 
