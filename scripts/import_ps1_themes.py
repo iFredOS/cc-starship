@@ -113,6 +113,16 @@ def apply_fixes(p):
     return p
 
 
+def clean_names(presets):
+    """A version only when the same look ships another version; names in plain words."""
+    base = lambda s: re.sub(r"[- ]v\d+$", "", s)
+    for p in presets:
+        if sum(base(q["name"]) == base(p["name"]) for q in presets) == 1:
+            p["id"], p["name"] = base(p["id"]), base(p["name"])
+        p["name"] = p["name"].replace("-", " ")
+    return presets
+
+
 def main():
     themes = parse(pathlib.Path(sys.argv[1]).read_text(encoding="utf-8"))
     taken = {p["id"] for p in BUILTINS}
@@ -122,7 +132,7 @@ def main():
             p["id"] += "-classic"
             p["name"] += " Classic"
     by_id = {p["id"]: p for p in BUILTINS + imported}
-    presets = [apply_fixes(by_id[i]) for i in KEEP]
+    presets = clean_names([apply_fixes(by_id[i]) for i in KEEP])
     ids = [p["id"] for p in presets]
     assert len(ids) == len(set(ids)), "duplicate preset ids"
     out = HERE / "presets" / "presets.json"

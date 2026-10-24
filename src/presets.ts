@@ -23,8 +23,14 @@ const PROMPT_COLORS = {
 };
 
 export const DEFAULT_PRESET = "fusain";
-/** Old preset ids that still work (Fusain was called Gray). */
-const ALIASES: Record<string, string> = { gray: "fusain" };
+/** Old preset ids that still work (Fusain was called Gray; lone "v1" looks lost the suffix). */
+const ALIASES: Record<string, string> = {
+  gray: "fusain",
+  "sunset-v1": "sunset",
+  "ocean-v1": "ocean",
+  "mocha-v1": "mocha",
+  "nord-v1": "nord",
+};
 
 export function allPresets(): Preset[] {
   return PRESETS;

@@ -183,8 +183,8 @@ export const PRESETS: Preset[] = [
     }
   },
   {
-    "id": "sunset-v1",
-    "name": "Sunset v1",
+    "id": "sunset",
+    "name": "Sunset",
     "source": "windows-statusline",
     "bar": {
       "accent": "#faf9f5",
@@ -359,8 +359,8 @@ export const PRESETS: Preset[] = [
     }
   },
   {
-    "id": "ocean-v1",
-    "name": "Ocean v1",
+    "id": "ocean",
+    "name": "Ocean",
     "source": "windows-statusline",
     "bar": {
       "accent": "#faf9f5",
@@ -535,8 +535,8 @@ export const PRESETS: Preset[] = [
     }
   },
   {
-    "id": "mocha-v1",
-    "name": "Mocha v1",
+    "id": "mocha",
+    "name": "Mocha",
     "source": "windows-statusline",
     "bar": {
       "accent": "#1e1e2e",
@@ -623,8 +623,8 @@ export const PRESETS: Preset[] = [
     }
   },
   {
-    "id": "nord-v1",
-    "name": "Nord v1",
+    "id": "nord",
+    "name": "Nord",
     "source": "windows-statusline",
     "bar": {
       "accent": "#eceff4",
@@ -1240,7 +1240,7 @@ export const PRESETS: Preset[] = [
   },
   {
     "id": "tokyo-night",
-    "name": "Tokyo-Night",
+    "name": "Tokyo Night",
     "source": "windows-statusline",
     "bar": {
       "accent": "#7aa2f7",

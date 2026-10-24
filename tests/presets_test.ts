@@ -61,3 +61,20 @@ Deno.test("Windows binary paths get forward slashes in the shell config", () => 
   );
   assert(config.includes("shell = ['C:/Users/me/AppData/Local/cc-starship/bin/x.exe', 'usage']"));
 });
+
+Deno.test("clean names: a version only when the same look has another version", () => {
+  const names = allPresets().map((p) => p.name);
+  for (const p of allPresets()) {
+    const m = /^(.*) v(\d+)$/.exec(p.name);
+    if (m) {
+      assert(names.some((n) => n !== p.name && n.startsWith(`${m[1]} v`)), `${p.name}: no other version`);
+    }
+    assert(!p.name.includes("-"), `${p.name}: plain words`);
+    assert(
+      !/-v\d+$/.test(p.id) || allPresets().some((q) => q !== p && q.id.startsWith(p.id.replace(/\d+$/, ""))),
+    );
+  }
+  for (const old of ["sunset-v1", "ocean-v1", "mocha-v1", "nord-v1"]) {
+    assertEquals(findPreset(old)?.id, old.replace("-v1", ""), `${old} still works`);
+  }
+});

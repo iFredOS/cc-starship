@@ -148,9 +148,7 @@ export function componentLines(info: PanelInfo, selected: number, theme = defaul
       dim(c.shell ? "5h · 7d usage, saved by the status bar" : "needs the shell prompt")
     }`,
     `${box(c.hook)} Usage for Claude            ${
-      c.bar
-        ? dim("Claude sees your usage; ") + yellow(`costs ${HOOK_COST}`)
-        : dim("needs the status bar")
+      c.bar ? dim("Claude sees your usage; ") + yellow(`costs ${HOOK_COST}`) : dim("needs the status bar")
     }`,
     `  Send usage to Claude        ${
       (info.prefs.hookFrom ?? DEFAULT_HOOK_FROM) === 0

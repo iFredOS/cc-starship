@@ -135,7 +135,6 @@ export function box(
   return [top, ...body, line(`╰${"─".repeat(width - 2)}╯`)];
 }
 
-const shortName = (p: Preset) => p.name.replace(/ v1$/, "");
 const NAME_WIDTH = 13, CELL = NAME_WIDTH + SWATCH_WIDTH + 3;
 
 /** How many columns of looks fit in `width`, and how many rows that makes. */
@@ -154,8 +153,8 @@ export function looksGrid(
   const cell = (i: number) => {
     const p = presets[i];
     const name = i === o.index
-      ? `${fg(theme.accent)}${BOLD}▸ ${shortName(p)}${RESET}`
-      : `  ${paint(theme.text, shortName(p))}`;
+      ? `${fg(theme.accent)}${BOLD}▸ ${p.name}${RESET}`
+      : `  ${paint(theme.text, p.name)}`;
     const mark = p.id === o.inUse ? ` ${paint(theme.second, "●")}` : "  ";
     return name + " ".repeat(Math.max(1, NAME_WIDTH - visibleWidth(name))) + swatch(p) + mark;
   };

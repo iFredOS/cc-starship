@@ -57,9 +57,9 @@ Deno.test("looks grid: every look visible at once, the cursor and the one in use
   for (const width of [112, 80, 50]) {
     const lines = looksGrid(presets, { index: 2, inUse: "rainbow", width, theme });
     const text = lines.map(stripAnsi).join("\n");
-    for (const p of presets) assertStringIncludes(text, p.name.replace(" v1", ""), `${width}: ${p.name}`);
+    for (const p of presets) assertStringIncludes(text, p.name, `${width}: ${p.name}`);
     for (const l of lines) assert(visibleWidth(l) <= width, `${width}: ${stripAnsi(l)}`);
-    assertStringIncludes(text, `▸ ${presets[2].name.replace(" v1", "")}`);
+    assertStringIncludes(text, `▸ ${presets[2].name}`);
     assert(/Rainbow\s.*●/.test(text), "in use marked");
   }
   assertEquals(looksGrid(presets, { index: 0, width: 112, theme }).length, 5, "three columns of five");

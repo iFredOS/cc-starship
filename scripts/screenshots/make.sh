@@ -24,7 +24,7 @@ cd "$W/home/projects/my-app"
 "$B" install --no-starship-update >/dev/null
 anon() { sed "s/$REAL_USER/you/g"; }
 
-for p in fusain rainbow nord-v1 tokyo-night synthwave ember; do "$B" preview $p | anon > "$W/preview-$p.ansi"; done
+for p in fusain rainbow nord tokyo-night synthwave ember; do "$B" preview $p | anon > "$W/preview-$p.ansi"; done
 head -3 "$W/preview-fusain.ansi" > "$W/bar.ansi"; tail -1 "$W/preview-fusain.ansi" > "$W/prompt.ansi"
 deno run -A "$HERE/render.ts" "$W" "$PWD" >/dev/null
 
@@ -53,7 +53,7 @@ snap hero "~/projects/my-app" "cap:Claude Code status bar" "file:$W/bar.ansi" "c
 snap warnings "Claude Code" "cap:Context at 92%, 5-hour limit at 74%" "file:$W/warn.ansi"
 snap narrow "Claude Code · narrow window" "file:$W/narrow.ansi"
 args=()
-for p in fusain:Fusain rainbow:Rainbow nord-v1:"Nord v1" tokyo-night:"Tokyo Night" synthwave:Synthwave ember:Ember; do
+for p in fusain:Fusain rainbow:Rainbow nord:Nord tokyo-night:"Tokyo Night" synthwave:Synthwave ember:Ember; do
   id=${p%%:*}; { head -3 "$W/preview-$id.ansi"; echo; tail -1 "$W/preview-$id.ansi"; } > "$W/gap-$id.ansi"
   args+=("cap:${p#*:}" "file:$W/gap-$id.ansi")
 done
