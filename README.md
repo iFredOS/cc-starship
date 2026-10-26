@@ -32,8 +32,8 @@ switches looks, and uninstalls cleanly, on macOS and Windows.
 
 ## Install
 
-1. **Get the program for your computer** from the [Releases](../../releases) page (or build it,
-   see [Development](#development)):
+1. **Get the program for your computer**: the file someone sent you, or the one from the
+   [Releases](../../releases) page (or build it, see [Development](#development)):
 
    | Computer | File |
    |---|---|
@@ -48,13 +48,18 @@ switches looks, and uninstalls cleanly, on macOS and Windows.
    ```sh
    cd ~/Downloads
    chmod +x cc-starship-aarch64-apple-darwin
-   xattr -d com.apple.quarantine cc-starship-aarch64-apple-darwin   # downloaded files are blocked until you allow them
+   xattr -c cc-starship-aarch64-apple-darwin   # downloaded files are blocked until you allow them
    ./cc-starship-aarch64-apple-darwin
    ```
 
-   **Windows** (Windows Terminal or PowerShell): run
-   `.\cc-starship-x86_64-pc-windows-msvc.exe` from your Downloads folder. If SmartScreen
-   warns you, choose *More info → Run anyway*.
+   **Windows** (Windows Terminal or PowerShell):
+
+   ```powershell
+   cd $HOME\Downloads
+   .\cc-starship-x86_64-pc-windows-msvc.exe
+   ```
+
+   If SmartScreen warns you, choose *More info → Run anyway*.
 
 3. **Pick a look with the arrow keys and press Enter.** The program installs itself, Starship
    and your chosen look.
@@ -74,7 +79,7 @@ To change the look later, run the installed copy again:
 
 Once a day, in the background, the program checks GitHub for a newer release. When there is one,
 the status bar's third line ends with **cc-starship 1.2.0** (say), and the control panel's header
-says it too. The check never slows the status bar: it reads the saved answer, and the check runs
+and `cc-starship status` say it too. The check never slows the status bar: it reads the saved answer, and the check runs
 on its own. Turn it off in Components → *Check for updates*, or with `cc-starship prefs updates off`.
 
 To update, download the new file for your computer and open it the same way as the first time.
@@ -95,8 +100,8 @@ switches to it. **U** uninstalls.
 
 **Components**: **Space** switches each part on or off, and changes apply right away. Before
 installing, it chooses what gets installed. Here you also update or remove Starship, install a
-Nerd Font, and choose the language (English or Québécois French) and clock (24 h or 12 h) for
-reset times.
+Nerd Font, choose the language (English or Québécois French) and clock (24 h or 12 h) for
+reset times, and whether to check for updates.
 
 ![The Components screen with every part and add-on](docs/images/panel-components.png)
 
@@ -119,7 +124,7 @@ The status bar and the prompt always change together.
 |---|---|
 | 1 | model · effort level · Claude Code version · signed-in account |
 | 2 | folder · branch or worktree (↑ ahead, ↓ behind, `*` uncommitted, `󰙅 2 more` when the repo has other worktrees) · lines added/removed · session time |
-| 3 | context used, tokens and cost · 5-hour limit · 7-day limit, each with its reset time |
+| 3 | context used, tokens and cost · 5-hour limit · 7-day limit, each with its reset time · a newer cc-starship, when there is one (see [Updating](#updating)) |
 
 Reset times read naturally: today shows the time (`2:38 AM`), another day this week its weekday
 (`Tue 1:08 AM`), later the date (`Oct 30 6 PM`). In French: `mar. 1 h 08`, `30 oct. 18 h`.
@@ -150,7 +155,7 @@ nothing and costs nothing. Restart Claude Code after switching it on.
 `cd`'d into, and your history keeps one copy of each command (the newest). Works in zsh and
 PowerShell. Tabs that start somewhere specific (restored windows, "Open in Terminal") stay
 where they are. Shells run by agents or one-off commands (`ssh host cmd`, `pwsh -Command`) are
-left alone. On Windows it uses the Starship prompt.
+left alone. With the shell prompt switched off, it keeps working with the shell's own prompt.
 
 **Terminal settings.** The same font and keys everywhere: JetBrainsMono Nerd Font, size 14,
 and Option working as Alt in cmux and Ghostty. In Windows Terminal it becomes the default font
@@ -169,7 +174,8 @@ cc-starship install [--preset NAME] [--no-starship-update] [--no-hook]
 cc-starship theme [NAME]                    # switch look, or show the current one
 cc-starship components [bar|shell|usage|hook|memory|terminal] [on|off]
 cc-starship prefs [language auto|en|fr-CA] [clock auto|24h|12h] [hook-from 0|50|70|90] [updates on|off]
-cc-starship status                          # parts, Starship, Nerd Fonts, notes
+cc-starship status                          # version, parts, Starship, Nerd Fonts, notes
+cc-starship --version
 cc-starship font list | install ID | remove ID
 cc-starship starship update | remove
 cc-starship presets | preview [NAME]
@@ -213,6 +219,10 @@ For comparison, the oh-my-posh status bar this replaced took about 94 ms on the 
 
 ## Troubleshooting
 
+- **macOS says the program "cannot be opened" or "is damaged":** that's the download block. Run
+  the `xattr -c …` line from [Install](#install), then try again.
+- **Windows: the first new tab after installing takes a few seconds:** Windows checks a newly
+  downloaded program once. The next tabs open at the usual speed.
 - **Boxes or `?` instead of icons:** your terminal's font isn't a Nerd Font. Install one from
   Components → Nerd Font, then choose it in your terminal's settings (or switch on
   *Terminal settings*). macOS Terminal.app's default font has no icons.

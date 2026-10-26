@@ -41,7 +41,7 @@ import {
 } from "./starship.ts";
 import { readAccountEmail, renderBar } from "./statusline.ts";
 import { runUi } from "./tui.ts";
-import { checkForUpdate, checkInBackground, newerVersion, readUpdateCache } from "./update.ts";
+import { checkForUpdate, checkInBackground, newerVersion, readUpdateCache, RELEASES } from "./update.ts";
 import { usageText } from "./usage.ts";
 import { DEFAULT_HOOK_FROM, DEFAULT_PREFS, HOOK_FROM_CHOICES, type Prefs, resolvePrefs } from "./when.ts";
 
@@ -54,7 +54,8 @@ Claude Code status bar and shell prompt, rendered by Starship.
   cc-starship theme [NAME]     switch preset (prompt and status bar), or show the current one
   cc-starship presets          list presets
   cc-starship preview [NAME]   print a preset's status bar and shell prompt
-  cc-starship status           what is installed: parts, Starship, Nerd Fonts
+  cc-starship status           what is installed: version, parts, Starship, Nerd Fonts
+  cc-starship --version        this program's version
   cc-starship components [bar|shell|usage|hook|memory|terminal] [on|off]
   cc-starship font list | install ID | remove ID
   cc-starship starship update | remove
@@ -82,6 +83,8 @@ async function status(): Promise<number> {
     // offline
   }
   const on = (b: boolean) => (b ? "on" : "off");
+  const newer = newerVersion(readUpdateCache(paths.update()), VERSION);
+  console.log(`version:    ${VERSION}${newer ? ` (${newer} available: ${RELEASES})` : ""}`);
   console.log(`installed:  ${state ? `yes, ${findPreset(state.theme)?.name}` : "no"}`);
   if (state) {
     const c = state.components;
