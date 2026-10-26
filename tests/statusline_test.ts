@@ -1,5 +1,7 @@
 import { assert, assertEquals, assertStringIncludes } from "@std/assert";
 import { join } from "node:path";
+import { findPreset } from "../src/presets.ts";
+import { buildBar } from "../src/statusline.ts";
 import { formatWhen } from "../src/when.ts";
 import { bar, barWith, fixture, git, now, payload, plain, stripAnsi, tempDir } from "./helpers.ts";
 
@@ -233,4 +235,26 @@ Deno.test("other worktrees: the count is the first thing a narrow window drops",
 Deno.test("a git status worked out once can be passed in (previews of every look reuse it)", () => {
   const out = plain(payload(), { git: { name: "from-cache", marks: " *" } });
   assertStringIncludes(out, "\u{e725} from-cache *");
+});
+
+Deno.test("status bar: a newer cc-starship shows at the end of line 3, and is the first thing a narrow window drops", () => {
+  const base = {
+    preset: findPreset("fusain")!,
+    configPath: "",
+    starship: "",
+    git: { name: "main", marks: "" },
+  };
+  const wide = buildBar(fixture, { ...base, update: "1.0.2" }).vars;
+  assertStringIncludes(wide.CC_L3_4, "cc-starship 1.0.2");
+  assertEquals(wide.CC_L3_END4, "1");
+  assertEquals(buildBar(fixture, base).vars.CC_L3_4, undefined, "nothing without an update");
+  const line3 = (v: Record<string, string>) => Object.entries(v).filter(([k]) => k.startsWith("CC_L3_"));
+  for (const columns of [70, 60, 50]) {
+    const narrow = buildBar(fixture, { ...base, columns, update: "1.0.2" }).vars;
+    const without = buildBar(fixture, { ...base, columns }).vars;
+    if (!narrow.CC_L3_4) {
+      assertEquals(line3(narrow), line3(without), `${columns}: dropped before anything else`);
+    }
+  }
+  assert(!buildBar(fixture, { ...base, columns: 50, update: "1.0.2" }).vars.CC_L3_4?.includes("cc-starship"));
 });

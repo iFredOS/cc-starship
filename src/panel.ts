@@ -176,6 +176,8 @@ export function header(
     version: string;
     width: number;
     roomy?: boolean;
+    /** A newer release, announced next to the version. */
+    update?: string | null;
   },
 ) {
   const { theme } = o;
@@ -183,7 +185,8 @@ export function header(
   const tagline = `  ${paint(theme.text, "Claude Code status bar")} ${paint(theme.dim, "+")} ${
     paint(theme.text, "shell prompt")
   }`;
-  const version = paint(theme.dim, `v${o.version}`);
+  const version = paint(theme.dim, `v${o.version}`) +
+    (o.update ? `  ${paint(theme.accent, `\u{f0aa} ${o.update} available`)}` : "");
   const gap = Math.max(2, o.width - 1 - visibleWidth(logo) - visibleWidth(tagline) - visibleWidth(version));
   const tab = (name: string, on: boolean) =>
     on ? pill(`  ${name}  `, theme.accent, theme.onAccent, true) : paint(theme.dim, `   ${name}   `);

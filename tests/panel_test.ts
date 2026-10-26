@@ -126,3 +126,16 @@ Deno.test("looks grid: every swatch starts in the same column, even after the lo
   const first = starts(lines[0]);
   for (const l of lines.slice(1)) assertEquals(starts(l).slice(0, first.length), first, l);
 });
+
+Deno.test("header: a newer cc-starship is announced next to the version", () => {
+  const text = header({ theme, screen: "looks", version: "1.0.1", width: 110, update: "1.0.2" }).map(
+    stripAnsi,
+  ).join("\n");
+  assertStringIncludes(text, "v1.0.1");
+  assertStringIncludes(text, "1.0.2 available");
+  assert(
+    !header({ theme, screen: "looks", version: "1.0.1", width: 110 }).map(stripAnsi).join("").includes(
+      "available",
+    ),
+  );
+});

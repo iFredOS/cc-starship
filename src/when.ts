@@ -9,6 +9,8 @@ export interface Prefs {
   clock: Clock | "auto";
   /** The usage hook stays silent until context, 5h or 7d reaches this %; 0 = every prompt. */
   hookFrom?: number;
+  /** Look for a newer cc-starship once a day (default on). */
+  updates?: boolean;
 }
 
 export const HOOK_FROM_CHOICES = [0, 50, 70, 90] as const;

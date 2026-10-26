@@ -18,6 +18,7 @@ switches looks, and uninstalls cleanly, on macOS and Windows.
 ## Contents
 
 - [Install](#install)
+- [Updating](#updating)
 - [The control panel](#the-control-panel)
 - [Looks](#looks)
 - [Reading the status bar](#reading-the-status-bar)
@@ -27,6 +28,7 @@ switches looks, and uninstalls cleanly, on macOS and Windows.
 - [Speed](#speed)
 - [Troubleshooting](#troubleshooting)
 - [Development](#development)
+- [License](#license)
 
 ## Install
 
@@ -67,6 +69,17 @@ To change the look later, run the installed copy again:
 ```powershell
 & "$env:LOCALAPPDATA\cc-starship\bin\cc-starship.exe"      # Windows (PowerShell)
 ```
+
+## Updating
+
+Once a day, in the background, the program checks GitHub for a newer release. When there is one,
+the status bar's third line ends with **cc-starship 1.2.0** (say), and the control panel's header
+says it too. The check never slows the status bar: it reads the saved answer, and the check runs
+on its own. Turn it off in Components → *Check for updates*, or with `cc-starship prefs updates off`.
+
+To update, download the new file for your computer and open it the same way as the first time.
+The panel offers to replace the installed copy; your look and settings stay. From a script:
+`cc-starship-… install` does the same without asking.
 
 ## The control panel
 
@@ -155,7 +168,7 @@ Everything the panel does, for scripts or remote machines:
 cc-starship install [--preset NAME] [--no-starship-update] [--no-hook]
 cc-starship theme [NAME]                    # switch look, or show the current one
 cc-starship components [bar|shell|usage|hook|memory|terminal] [on|off]
-cc-starship prefs [language auto|en|fr-CA] [clock auto|24h|12h] [hook-from 0|50|70|90]
+cc-starship prefs [language auto|en|fr-CA] [clock auto|24h|12h] [hook-from 0|50|70|90] [updates on|off]
 cc-starship status                          # parts, Starship, Nerd Fonts, notes
 cc-starship font list | install ID | remove ID
 cc-starship starship update | remove
@@ -240,3 +253,15 @@ because raw glyphs are invisible in most editors and easily lost.
 
 The screenshots run the real program in a throwaway demo home (sample project, `you@example.com`,
 offline), render its output to HTML and snapshot it with WebKit.
+
+## License
+
+cc-starship is free software: you can use it, study it, change it and share it under the terms of
+the [GNU General Public License, version 3 or later](LICENSE). Any copy you share, changed or not,
+must stay under the same license, with its source and this notice.
+
+Copyright (C) 2026 iFredOS
+
+It installs or uses other projects under their own licenses: [Starship](https://starship.rs) (ISC),
+[Nerd Fonts](https://www.nerdfonts.com) (SIL Open Font License), and the [Deno](https://deno.com)
+runtime built into each program (MIT).

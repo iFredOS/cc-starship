@@ -133,3 +133,14 @@ Deno.test("keys: Option/Alt+letter is one key, not Esc (which would close the pa
   assertEquals(parseKeys(enc("\x1bOA\x1bOB")), ["up", "down"], "arrows in application cursor mode");
   assertEquals(parseKeys(enc("\x1b\x1b")), ["back", "back"]);
 });
+
+Deno.test("components panel: updates are checked once a day unless switched off, and a newer one is shown", () => {
+  const on = componentLines(base, 0).map(stripAnsi).join("\n");
+  assert(/Check for updates\s+On/.test(on), on);
+  const newer = componentLines({ ...base, update: "1.0.2" }, 0).map(stripAnsi).join("\n");
+  assertStringIncludes(newer, "1.0.2 available");
+  const off = componentLines({ ...base, prefs: { ...base.prefs, updates: false } }, 0).map(stripAnsi).join(
+    "\n",
+  );
+  assert(/Check for updates\s+Off/.test(off), off);
+});

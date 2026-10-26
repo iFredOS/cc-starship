@@ -1,6 +1,14 @@
 // cc-starship: installer, uninstaller and runtime for a Starship-rendered
 // Claude Code status bar and matching shell prompt.
-import { claudeStatusLine, doInstall, ensureStarship, previewLines, runUninstall, VERSION } from "./app.ts";
+import {
+  claudeStatusLine,
+  compiled,
+  doInstall,
+  ensureStarship,
+  previewLines,
+  runUninstall,
+  VERSION,
+} from "./app.ts";
 import {
   ALL_COMPONENTS,
   type Components,
@@ -33,6 +41,7 @@ import {
 } from "./starship.ts";
 import { readAccountEmail, renderBar } from "./statusline.ts";
 import { runUi } from "./tui.ts";
+import { checkForUpdate, checkInBackground, newerVersion, readUpdateCache } from "./update.ts";
 import { usageText } from "./usage.ts";
 import { DEFAULT_HOOK_FROM, DEFAULT_PREFS, HOOK_FROM_CHOICES, type Prefs, resolvePrefs } from "./when.ts";
 
@@ -49,7 +58,7 @@ Claude Code status bar and shell prompt, rendered by Starship.
   cc-starship components [bar|shell|usage|hook|memory|terminal] [on|off]
   cc-starship font list | install ID | remove ID
   cc-starship starship update | remove
-  cc-starship prefs [language auto|en|fr-CA] [clock auto|24h|12h] [hook-from 0|50|70|90]
+  cc-starship prefs [language auto|en|fr-CA] [clock auto|24h|12h] [hook-from 0|50|70|90] [updates on|off]
   cc-starship statusline       (run by Claude Code) render the status bar from stdin
   cc-starship usage            (run by the shell prompt) print Claude usage
   cc-starship hook             (run by Claude Code) tell Claude its usage with each prompt`;
@@ -118,8 +127,10 @@ async function prefsCommand(args: string[]): Promise<number> {
       prefs.clock = value as Prefs["clock"];
     } else if (key === "hook-from" && HOOK_FROM_CHOICES.includes(Number(value) as 0)) {
       prefs.hookFrom = Number(value);
+    } else if (key === "updates" && ["on", "off"].includes(value)) {
+      prefs.updates = value === "on";
     } else {throw new Error(
-        "usage: prefs [language auto|en|fr-CA] [clock auto|24h|12h] [hook-from 0|50|70|90]",
+        "usage: prefs [language auto|en|fr-CA] [clock auto|24h|12h] [hook-from 0|50|70|90] [updates on|off]",
       );}
   }
   if (args.length) await setPrefs(prefs);
@@ -127,7 +138,8 @@ async function prefsCommand(args: string[]): Promise<number> {
   const from = prefs.hookFrom ?? DEFAULT_HOOK_FROM;
   console.log(
     `language ${prefs.language} (${r.language}), clock ${prefs.clock} (${r.clock}), ` +
-      `usage to Claude ${from ? `from ${from}%` : "every prompt"}`,
+      `usage to Claude ${from ? `from ${from}%` : "every prompt"}, ` +
+      `updates ${prefs.updates === false ? "off" : "checked once a day"}`,
   );
   return 0;
 }
@@ -203,6 +215,9 @@ async function statusline(): Promise<void> {
   const state = readState();
   const preset = findPreset(state?.theme ?? DEFAULT_PRESET) ?? findPreset(DEFAULT_PRESET)!;
   const columns = Number(Deno.env.get("COLUMNS")) || undefined;
+  const prefs = readInstalled()?.prefs ?? DEFAULT_PREFS;
+  const updates = state !== null && prefs.updates !== false;
+  if (updates && compiled) checkInBackground(paths.update(), Deno.execPath());
   const out = renderBar(payload, {
     preset,
     configPath: paths.barConfig(),
@@ -213,7 +228,8 @@ async function statusline(): Promise<void> {
     snapshotFile: "session_id" in payload
       ? snapshotFile(paths.sessions(), String(payload.session_id))
       : undefined,
-    prefs: resolvePrefs(readInstalled()?.prefs ?? DEFAULT_PREFS),
+    prefs: resolvePrefs(prefs),
+    update: updates ? newerVersion(readUpdateCache(paths.update()), VERSION) : null,
   });
   await Deno.stdout.write(new TextEncoder().encode(out));
 }
@@ -234,6 +250,9 @@ export async function main(args: string[]): Promise<number> {
       return await runUi();
     case "statusline":
       await statusline();
+      return 0;
+    case "check-update": // the status bar's daily background check
+      await checkForUpdate(paths.update());
       return 0;
     case "hook": {
       const input = await new Response(Deno.stdin.readable).text();

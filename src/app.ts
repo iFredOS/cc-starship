@@ -10,8 +10,9 @@ import { downloadStarship, findStarship, latestVersion, runUpdate, updatePlan } 
 import { barCommand, barOutput, type GitStatus } from "./statusline.ts";
 import type { Clock, Language, Prefs } from "./when.ts";
 
-export const VERSION = "1.0.1";
-const compiled = basename(Deno.execPath()).startsWith("cc-starship");
+export const VERSION = "1.1.0";
+/** A built cc-starship (not `deno run`): only it copies itself into place or runs itself. */
+export const compiled = basename(Deno.execPath()).startsWith("cc-starship");
 
 /** Claude Code's current statusLine setting, if readable. */
 export function claudeStatusLine(): { command?: string } | undefined {

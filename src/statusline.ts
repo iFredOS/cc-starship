@@ -25,6 +25,8 @@ export interface BarOptions {
   snapshotFile?: string;
   /** Language and clock for reset times; defaults to the system's. */
   prefs?: { language: Language; clock: Clock };
+  /** A newer cc-starship release, shown at the end of line 3. */
+  update?: string | null;
 }
 
 const ESC = "\x1b";
@@ -49,6 +51,7 @@ const ICON = {
   fiveHour: "\uf252",
   sevenDay: "\uf073",
   warning: "\uf071",
+  update: "\uf0aa",
 };
 
 const EFFORT: Record<string, { icon: string; label: string }> = {
@@ -290,7 +293,8 @@ export function buildBar(j: Json, opts: BarOptions): { dir: string; vars: Record
     } ($${(cost.total_cost_usd ?? 0).toFixed(2)})`,
     fiveHour: fiveHourUsage && fiveHourUsage + formatReset(fiveHour.resets_at, prefs),
     sevenDay: sevenDayUsage && sevenDayUsage + formatReset(sevenDay.resets_at, prefs),
-  }, [{ sevenDay: sevenDayUsage }, { fiveHour: fiveHourUsage }, { sevenDay: null }, {
+    update: opts.update && `${accent(ICON.update)} cc-starship ${opts.update}`,
+  }, [{ update: null }, { sevenDay: sevenDayUsage }, { fiveHour: fiveHourUsage }, { sevenDay: null }, {
     fiveHour: null,
   }], budget);
 

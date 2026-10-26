@@ -4,12 +4,13 @@
 // - Components: switch the status bar, shell prompt and usage segment on or off,
 //   update or remove Starship, and install a Nerd Font.
 // Q or Esc quits without changing anything.
-import { doInstall, ensureStarship, previewLinesAsync, runUninstall, VERSION } from "./app.ts";
+import { compiled, doInstall, ensureStarship, previewLinesAsync, runUninstall, VERSION } from "./app.ts";
 import {
   ALL_COMPONENTS,
   type Components,
   readInstalled,
   refreshProfilePaths,
+  runningFromInstallDir,
   setComponents,
   setPrefs,
   setTheme,
@@ -29,6 +30,15 @@ import { isWindows, paths } from "./paths.ts";
 import { TERMINAL_FONT, TERMINAL_SIZE } from "./terminal.ts";
 import { allPresets, DEFAULT_PRESET, findPreset, type Preset } from "./presets.ts";
 import { gitStatus } from "./statusline.ts";
+import {
+  checkDue,
+  checkForUpdate,
+  newerVersion,
+  offerUpdate,
+  readUpdateCache,
+  RELEASES,
+  versionOf,
+} from "./update.ts";
 import {
   box,
   clip,
@@ -112,6 +122,8 @@ export interface PanelInfo {
   prefs: Prefs;
   /** System locale, for what "Auto" means (tests pass one). */
   locale?: string;
+  /** A newer cc-starship release, from the last daily check. */
+  update?: string | null;
 }
 
 const ROWS = [
@@ -126,6 +138,7 @@ const ROWS = [
   "font",
   "language",
   "clock",
+  "updates",
 ] as const;
 type Toggle = "bar" | "shell" | "usage" | "hook" | "memory" | "terminal";
 const TOGGLES: readonly string[] = ["bar", "shell", "usage", "hook", "memory", "terminal"];
@@ -193,6 +206,13 @@ export function componentLines(info: PanelInfo, selected: number, theme = defaul
     }   ${dim(`dates look like: ${sample}`)}`,
     `  Clock                       ${
       info.prefs.clock === "auto" ? `Auto (${CLOCK_NAMES[resolved.clock]})` : CLOCK_NAMES[info.prefs.clock]
+    }`,
+    `  Check for updates           ${
+      info.prefs.updates === false
+        ? `Off   ${dim("no network")}`
+        : `On   ${
+          info.update ? yellow(`${info.update} available: ${RELEASES}`) : dim("once a day, in the background")
+        }`
     }`,
   ];
   return rows.map((r, i) => (i === selected ? `${ESC}[1m${paint(theme.accent, "▸")} ${r}` : `  ${r}`));
@@ -279,6 +299,10 @@ export async function runUi(): Promise<number> {
   let fonts = detectNerdFonts();
   let message = "";
   let explain = true;
+  // A newer release, from the daily check (installs only: nothing is written before one).
+  const updatesOn = () => !!state && prefs.updates !== false;
+  const knownUpdate = () => (updatesOn() ? newerVersion(readUpdateCache(paths.update()), VERSION) : null);
+  let update = knownUpdate();
   // Previews render in the background, so arrow keys never wait: both Starship runs of a
   // preview at once, one git status for all looks, always the look nearest the cursor next.
   const git = gitStatus(Deno.cwd());
@@ -389,7 +413,11 @@ export async function runUi(): Promise<number> {
       ...box("Components", [
         paint(t.dim, intro),
         "",
-        ...componentLines({ installed: !!state, components, starship: info, latest, fonts, prefs }, row, t),
+        ...componentLines(
+          { installed: !!state, components, starship: info, latest, fonts, prefs, update },
+          row,
+          t,
+        ),
       ], { width: width(), theme: t }),
       ...(roomy ? ["", fontHint(t)] : []),
       ...footer([
@@ -438,7 +466,7 @@ export async function runUi(): Promise<number> {
     // Taller than the window, the terminal would scroll the top away: explanations go first,
     // then the spacing.
     const top = (roomy: boolean) =>
-      header({ theme: theme(), screen, version: VERSION, width: width(), roomy });
+      header({ theme: theme(), screen, version: VERSION, width: width(), roomy, update });
     const eKey = screen === "looks" &&
       [...top(true), ...looks({ explain: true, roomy: true, eKey: true })].length <= height();
     const layouts = screen === "looks"
@@ -529,6 +557,12 @@ export async function runUi(): Promise<number> {
       const next = { ...prefs, hookFrom: HOOK_FROM_CHOICES[(i + 1) % HOOK_FROM_CHOICES.length] };
       if (state && !(await saved(() => setPrefs(next)))) return;
       prefs = next;
+    }
+    if (key === "space" && name === "updates") {
+      const next = { ...prefs, updates: prefs.updates === false };
+      if (state && !(await saved(() => setPrefs(next)))) return;
+      prefs = next;
+      update = knownUpdate();
     }
     if (key === "space" && (name === "language" || name === "clock")) {
       const next = name === "language"
@@ -635,6 +669,14 @@ export async function runUi(): Promise<number> {
   latestVersion().then((v) => (latest = v), () => (latest = null)).then(redraw);
   warm();
   if (state) refreshProfilePaths().catch(() => {});
+  if (updatesOn() && checkDue(readUpdateCache(paths.update()))) {
+    checkForUpdate(paths.update()).then(() => {
+      update = knownUpdate();
+      redraw();
+    }, () => {});
+  }
+  // Opened from a download newer than the installed program: offer to put it in place.
+  const installed = state && compiled && !runningFromInstallDir() ? await versionOf(state.bin) : null;
   /** Handles one key; true when the panel should close. */
   const handle = async (key: Key): Promise<boolean> => {
     // Read through a function: the switch to "fonts" happens in callbacks TS can't follow.
@@ -667,6 +709,22 @@ export async function runUi(): Promise<number> {
   };
 
   try {
+    if (state && offerUpdate(VERSION, installed)) {
+      draw();
+      const answer = await prompt(
+        yellow(
+          `Update the installed cc-starship ${installed} → ${VERSION}? Your look and settings stay. (Y/n) `,
+        ),
+      );
+      if (answer !== "no") {
+        const theme = state.theme;
+        await run("Updating…", async (log) => {
+          await doInstall(theme, false, log, components, prefs);
+          log(green(`cc-starship ${VERSION} is installed; the status bar uses it within a minute.`));
+        });
+        update = knownUpdate();
+      }
+    }
     while (true) {
       draw();
       idle = true;
