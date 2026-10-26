@@ -16,7 +16,7 @@ Deno.test("full payload shows every segment", () => {
       "◐ Medium",
       "\uf02b v2.1.290",
       "\uf007 you@example.com",
-      "\uf07b ~/projects/my-app",
+      "\uf07b /tmp",
       "\uf440 +156/−23 · \uf017 2h 21m",
       "\uf1c0 CTX 8% / 15.5K ($1.23)",
       "\uf252 5h 42%",

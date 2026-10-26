@@ -1,12 +1,12 @@
 {
-  "cwd": "/Users/you/projects/my-app",
+  "cwd": "/tmp",
   "session_id": "fixture",
   "model": {
     "id": "claude-opus-5-5",
     "display_name": "Opus 5.5"
   },
   "workspace": {
-    "current_dir": "/Users/you/projects/my-app"
+    "current_dir": "/tmp"
   },
   "version": "2.1.290",
   "cost": {

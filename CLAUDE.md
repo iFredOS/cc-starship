@@ -21,13 +21,13 @@ uninstall behavior) updates the README in the same commit:
 5. Commit, `git tag -a vX.Y.Z`, push the tag, `gh release create vX.Y.Z --latest` with the
    binaries and SHA256SUMS.txt. Notes: what's new, the download table, what was tested, known limits.
 6. Download one asset back with `gh release download` and check it with `shasum -c`.
-7. Update the installed copies: this Mac, `ssh m1`, `ssh gaming-pc` (copy the exe as
-   `cc-starship-new.exe` into `%TEMP%`, run `install --no-starship-update`, delete it).
+7. Update your own installed copies (on Windows, copy the new exe under a `cc-starship-…` name
+   and run `install --no-starship-update`; the running program can't replace itself by name).
 
-Test rigs for anything touching install, uninstall or a shell profile: the throwaway Windows
-account (`ssh testuser@192.0.2.10`), the Windows 11 ARM VM (`~/VMs/win11-reset.sh`, then
-`ssh win11-vm`), a clean macOS (`tart clone ghcr.io/cirruslabs/macos-golden-gate-base:latest …`),
-and `scripts/conpty/run.sh` for the panel on Windows.
+Anything touching install, uninstall or a shell profile gets tested on a clean machine first: a
+fresh user account or VM on each OS (a clean macOS is one `tart clone` away), with every file of
+the account compared before and after. `scripts/conpty/run.sh` drives the panel on a Windows PC
+over SSH.
 
 ## Code
 

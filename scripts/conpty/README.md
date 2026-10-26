@@ -12,7 +12,6 @@ text, one frame per key. With `--png` it also renders the frames as images, usin
 | `harness.ps1` | PC | PowerShell 5.1/7 with embedded C#. Calls `CreatePseudoConsole` and `CreateProcess` (PSEUDOCONSOLE attribute), drains the pipes, runs the key script, puts the child in a Job Object, records `output.raw` and `timeline.tsv` |
 | `vt.py` | Mac | Emulates the VT stream and cuts it into frames. Writes `frames/NN.txt` (exact), `NN.ansi` (24-bit SGR) and `index.tsv`. Can also render PNGs |
 | `keys/*.keys` | — | Key scripts |
-| `NOTES.md` | — | Build log and findings |
 
 ## Smoke test
 

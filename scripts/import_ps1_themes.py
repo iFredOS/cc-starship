@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """One-off import of the 38 themes from the Windows statusline-command.ps1
-(C:\\Users\\you\\.claude) into presets/presets.json, next to the built-in
+(%USERPROFILE%\\.claude) into presets/presets.json, next to the built-in
 rainbow and fusain presets.
 
 Each PowerShell theme gives a background and text color to seven roles:
