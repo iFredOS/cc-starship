@@ -45,7 +45,7 @@ import { checkForUpdate, checkInBackground, newerVersion, readUpdateCache, RELEA
 import { usageText } from "./usage.ts";
 import { DEFAULT_HOOK_FROM, DEFAULT_PREFS, HOOK_FROM_CHOICES, type Prefs, resolvePrefs } from "./when.ts";
 
-const HELP = `cc-starship ${VERSION}
+export const HELP = `cc-starship ${VERSION}
 Claude Code status bar and shell prompt, rendered by Starship.
 
   cc-starship                  pick a preset with the keyboard and install it
