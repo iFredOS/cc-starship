@@ -129,7 +129,7 @@ The status bar and the prompt always change together.
 Reset times read naturally: today shows the time (`2:38 AM`), another day this week its weekday
 (`Tue 1:08 AM`), later the date (`Oct 30 6 PM`). In French: `mar. 1 h 08`, `30 oct. 18 h`.
 
-**Warnings stand out:** a percentage becomes an amber chip at 70% and a red ▲ chip at 90%.
+**Warnings stand out:** a percentage becomes an amber chip at 70% and a red ▲ chip at 90%, shaped with powerline arrows so it blends into the segment.
 
 ![Red chip for context at 92%, amber chip for the 5-hour limit at 74%](docs/images/warnings.png)
 

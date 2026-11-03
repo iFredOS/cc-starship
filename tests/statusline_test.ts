@@ -77,17 +77,21 @@ Deno.test("70%+ shows an amber chip, 90%+ a red chip with ▲, then the segment 
     }),
     { preset: "fusain" },
   );
-  const chip = (bg: string, text: string) =>
-    `\x1b[48;2;${rgb(bg)}m\x1b[38;2;${rgb("#1d2021")}m\x1b[1m ${text} \x1b[22m`;
-  assertStringIncludes(out, chip("#fb4934", "▲95%"));
-  assertStringIncludes(out, chip("#fabd2f", "75%"));
-  assert(!out.includes(`${rgb("#fabd2f")}m\x1b[38;2;${rgb("#1d2021")}m\x1b[1m 10%`));
-  // After the red chip, the context segment's own background and text color come back.
   const gray = JSON.parse(Deno.readTextFileSync(new URL("../presets/presets.json", import.meta.url)))
     .find((p: { id: string }) => p.id === "fusain");
   const seg = gray.bar.lines[2][0];
-  assertStringIncludes(out, `▲95% \x1b[22m\x1b[48;2;${rgb(seg.bg)}m\x1b[38;2;${rgb(seg.fg)}m`);
-  assertStringIncludes(stripAnsi(out), "CTX  ▲95%  /");
+  // Right-pointing arrows at both ends: segment into chip, then chip back into the segment.
+  const chip = (bg: string, text: string, segBg: string) =>
+    `\x1b[48;2;${rgb(bg)}m\x1b[38;2;${rgb(segBg)}m\u{e0b0}\x1b[38;2;${
+      rgb("#1d2021")
+    }m\x1b[1m ${text} \x1b[22m` +
+    `\x1b[48;2;${rgb(segBg)}m\x1b[38;2;${rgb(bg)}m\u{e0b0}`;
+  assertStringIncludes(out, chip("#fb4934", "▲95%", seg.bg));
+  assertStringIncludes(out, chip("#fabd2f", "75%", gray.bar.lines[2][1].bg));
+  assert(!out.includes(`${rgb("#fabd2f")}m\x1b[38;2;${rgb("#1d2021")}m\x1b[1m 10%`));
+  // After the red chip, the context segment's own background and text color come back.
+  assertStringIncludes(out, `\u{e0b0}\x1b[48;2;${rgb(seg.bg)}m\x1b[38;2;${rgb(seg.fg)}m`);
+  assertStringIncludes(stripAnsi(out), "CTX \u{e0b0} ▲95% \u{e0b0} / ");
 });
 
 Deno.test("accent icons fall back to the segment text when they'd be hard to see", () => {

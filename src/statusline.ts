@@ -37,6 +37,10 @@ const RESTORE = "\x00";
 const RESTORE_ALL = "\x01";
 /** the preset's accent color, or the segment's text color where the accent is hard to see */
 const ACCENT = "\x02";
+/** the segment's background, as a text color (the arrow into an arrow-shaped chip) */
+const SEGMENT_BG_AS_FG = "\x04";
+/** the segment's background, as a background color (the arrow out of an arrow-shaped chip) */
+const SEGMENT_BG = "\x03";
 
 // Nerd Font icons, as escapes: raw glyphs are invisible and get lost in edits.
 const ICON = {
@@ -97,12 +101,14 @@ function formatReset(epochSeconds: number | undefined, prefs: { language: Langua
 
 // From 70% an amber chip, from 90% a red one with ▲: dark bold text on the warning
 // color reads on every preset, and the change of shape shows even where the
-// segment's own text is already orange.
+// segment's own text is already orange. The chip's ends are powerline arrows
+// (\u{e0b0}, like the bar's own): the segment flows into the chip and the chip back out.
 function percent(value?: number): string {
   const p = Math.round(value ?? 0);
   if (p < 70) return `${p}%`;
   const [color, text] = p >= 90 ? ["#fb4934", `▲${p}%`] : ["#fabd2f", `${p}%`];
-  return `${bg(color)}${fg("#1d2021")}${ESC}[1m ${text} ${ESC}[22m${RESTORE_ALL}`;
+  return `${bg(color)}${SEGMENT_BG_AS_FG}\u{e0b0}${fg("#1d2021")}${ESC}[1m ${text} ${ESC}[22m` +
+    `${SEGMENT_BG}${fg(color)}\u{e0b0}${RESTORE_ALL}`;
 }
 
 // Branch name and its " ↑1 ↓2 *" marks from `git status`; "─" outside a repository.
@@ -308,6 +314,8 @@ export function buildBar(j: Json, opts: BarOptions): { dir: string; vars: Record
       const accent = contrast(opts.preset.bar.accent, colors.bg) >= 3 ? opts.preset.bar.accent : colors.fg;
       vars[`CC_L${l}_${slot + 1}`] = s
         .replaceAll(ACCENT, fg(accent))
+        .replaceAll(SEGMENT_BG_AS_FG, fg(colors.bg))
+        .replaceAll(SEGMENT_BG, bg(colors.bg))
         .replaceAll(RESTORE_ALL, bg(colors.bg) + fg(colors.fg))
         .replaceAll(RESTORE, fg(colors.fg));
     });

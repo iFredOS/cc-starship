@@ -10,7 +10,7 @@ import { downloadStarship, findStarship, latestVersion, runUpdate, updatePlan } 
 import { barCommand, barOutput, type GitStatus } from "./statusline.ts";
 import type { Clock, Language, Prefs } from "./when.ts";
 
-export const VERSION = "1.1.0";
+export const VERSION = "1.1.1";
 /** A built cc-starship (not `deno run`): only it copies itself into place or runs itself. */
 export const compiled = basename(Deno.execPath()).startsWith("cc-starship");
 
