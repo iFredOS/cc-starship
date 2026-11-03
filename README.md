@@ -93,7 +93,7 @@ its two screens.
 
 **Looks**: every look at once, each with a swatch of its colors; the arrow keys browse them,
 and the whole panel takes on the colors of the look under the cursor. Below, a live preview of
-both the status bar and the prompt, explained part by part (**E** hides the explanations). **Enter** installs with that look, or
+both the status bar and the prompt, explained part by part (**E** hides the explanations, **A** switches the preview to a high-usage sample, to see that look's warning chips). **Enter** installs with that look, or
 switches to it. **U** uninstalls.
 
 ![The Looks screen with the preview and explanations](docs/images/panel-looks.png)
@@ -129,7 +129,7 @@ The status bar and the prompt always change together.
 Reset times read naturally: today shows the time (`2:38 AM`), another day this week its weekday
 (`Tue 1:08 AM`), later the date (`Oct 30 6 PM`). In French: `mar. 1 h 08`, `30 oct. 18 h`.
 
-**Warnings stand out:** a percentage becomes an amber chip at 70% and a red ▲ chip at 90%, shaped with powerline arrows so it blends into the segment.
+**Warnings stand out:** a percentage becomes an amber chip at 70% and a red ▲ chip at 90%, shaped with powerline arrows so it blends into the segment. Where amber or red would nearly match the segment's own color (a yellow segment in Nord, say), the chip turns dark with amber or red text instead. In the control panel, **A** previews any look with its warnings showing.
 
 ![Red chip for context at 92%, amber chip for the 5-hour limit at 74%](docs/images/warnings.png)
 

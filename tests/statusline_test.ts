@@ -1,7 +1,8 @@
 import { assert, assertEquals, assertStringIncludes } from "@std/assert";
 import { join } from "node:path";
-import { findPreset } from "../src/presets.ts";
-import { buildBar } from "../src/statusline.ts";
+import { contrast } from "../src/color.ts";
+import { allPresets, findPreset } from "../src/presets.ts";
+import { buildBar, chipFor } from "../src/statusline.ts";
 import { formatWhen } from "../src/when.ts";
 import { bar, barWith, fixture, git, now, payload, plain, stripAnsi, tempDir } from "./helpers.ts";
 
@@ -261,4 +262,50 @@ Deno.test("status bar: a newer cc-starship shows at the end of line 3, and is th
     }
   }
   assert(!buildBar(fixture, { ...base, columns: 50, update: "1.0.2" }).vars.CC_L3_4?.includes("cc-starship"));
+});
+
+Deno.test("a chip keeps its amber or red on a segment where that stands out", () => {
+  assertEquals(chipFor("warn", "#32302f"), { bg: "#fabd2f", fg: "#1d2021" });
+  assertEquals(chipFor("crit", "#32302f"), { bg: "#fb4934", fg: "#1d2021" });
+});
+
+Deno.test("a chip turns dark with amber text where amber would vanish into the segment", () => {
+  // Nord's 5h segment is itself yellow.
+  assertEquals(chipFor("warn", "#ebcb8b"), { bg: "#1d2021", fg: "#fabd2f" });
+  assertEquals(chipFor("crit", "#f04a38"), { bg: "#1d2021", fg: "#fb4934" });
+});
+
+Deno.test("in every look, every segment of line 3 shows its warning chips", () => {
+  for (const p of allPresets()) {
+    for (const [slot, { bg }] of p.bar.lines[2].entries()) {
+      for (const level of ["warn", "crit"] as const) {
+        const chip = chipFor(level, bg);
+        assert(
+          contrast(chip.bg, bg) >= 1.5,
+          `${p.id} slot ${slot} ${level}: ${contrast(chip.bg, bg).toFixed(2)}`,
+        );
+      }
+    }
+  }
+});
+
+Deno.test("on Nord's yellow 5h segment the chip is dark with amber text, and no chip token leaks", () => {
+  const out = bar(
+    payload({ rate_limits: { five_hour: { used_percentage: 75 }, seven_day: { used_percentage: 10 } } }),
+    { preset: "nord" },
+  );
+  const nord = JSON.parse(Deno.readTextFileSync(new URL("../presets/presets.json", import.meta.url)))
+    .find((p: { id: string }) => p.id === "nord");
+  const seg = nord.bar.lines[2][1];
+  assertStringIncludes(
+    out,
+    `\x1b[48;2;${rgb("#1d2021")}m\x1b[38;2;${rgb(seg.bg)}m\u{e0b0}\x1b[38;2;${
+      rgb("#fabd2f")
+    }m\x1b[1m 75% \x1b[22m` +
+      `\x1b[48;2;${rgb(seg.bg)}m\x1b[38;2;${rgb("#1d2021")}m\u{e0b0}\x1b[48;2;${rgb(seg.bg)}m\x1b[38;2;${
+        rgb(seg.fg)
+      }m`,
+  );
+  // deno-lint-ignore no-control-regex -- the chip's placeholder bytes
+  assert(!/[\x00-\x07]/.test(out), "an unresolved chip token");
 });

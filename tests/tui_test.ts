@@ -124,6 +124,7 @@ Deno.test("keys: several in one read (a held arrow key, fast typing) are all han
   assertEquals(parseKeys(enc("\x1b")), ["back"]);
   assertEquals(parseKeys(enc("\r\n")), ["enter"]);
   assertEquals(parseKeys(enc("\t")), ["tab"]);
+  assertEquals(parseKeys(enc("aA")), ["warn", "warn"], "A switches the preview to its warning sample");
 });
 
 Deno.test("keys: Option/Alt+letter is one key, not Esc (which would close the panel)", () => {

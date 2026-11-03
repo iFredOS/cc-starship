@@ -1,4 +1,4 @@
-import { assert, assertEquals } from "@std/assert";
+import { assert, assertEquals, assertStringIncludes } from "@std/assert";
 import { join } from "node:path";
 import { allPresets, barConfig, DEFAULT_PRESET, findPreset, shellConfig } from "../src/presets.ts";
 import { stripAnsi, tempDir } from "./helpers.ts";
@@ -84,6 +84,21 @@ Deno.test("previews render asynchronously, both Starship runs at once, same line
   const p = findPreset("ember")!;
   const strip = (l: string[]) => l.map((s) => stripAnsi(s).replace(/\d+:\d+ ?[AP]M|\d+ h \d*/g, "T"));
   assertEquals(strip(await previewLinesAsync(p, "starship")), strip(previewLines(p, "starship")));
+});
+
+Deno.test("the warning sample previews a red and an amber chip, the normal one none", async () => {
+  const { previewLinesAsync } = await import("../src/app.ts");
+  const p = findPreset("nord")!;
+  const text = (l: string[]) => {
+    // deno-lint-ignore no-control-regex -- the chip's placeholder bytes
+    assert(!/[\x00-\x07]/.test(l.join("\n")), "an unresolved chip token");
+    return stripAnsi(l.join("\n"));
+  };
+  const normal = text(await previewLinesAsync(p, "starship"));
+  const warning = text(await previewLinesAsync(p, "starship", { warning: true }));
+  assert(!normal.includes("▲"), normal);
+  assertStringIncludes(warning, "▲92%");
+  assertStringIncludes(warning, "74%");
 });
 
 Deno.test("shell config: a cold first start of the usage segment never prints Starship's timeout warning", () => {

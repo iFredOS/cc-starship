@@ -10,7 +10,7 @@ import { downloadStarship, findStarship, latestVersion, runUpdate, updatePlan } 
 import { barCommand, barOutput, type GitStatus } from "./statusline.ts";
 import type { Clock, Language, Prefs } from "./when.ts";
 
-export const VERSION = "1.1.1";
+export const VERSION = "1.2.0";
 /** A built cc-starship (not `deno run`): only it copies itself into place or runs itself. */
 export const compiled = basename(Deno.execPath()).startsWith("cc-starship");
 
@@ -109,11 +109,12 @@ function previewCommands(
   dir: string,
   prefs?: PreviewPrefs,
   git?: GitStatus,
+  warning = false,
 ) {
   const bar = join(dir, "bar.toml"), shell = join(dir, "shell.toml");
   Deno.writeTextFileSync(bar, barConfig(preset));
   Deno.writeTextFileSync(shell, shellConfig(preset, Deno.execPath()));
-  const sample = samplePayload();
+  const sample = samplePayload(warning);
   // Setting up the bar saves the sample's 5h/7d usage here, before either run starts;
   // the prompt's usage segment reads it back.
   const { command, fallback } = barCommand(sample, {
@@ -167,13 +168,13 @@ export function previewLines(
 export async function previewLinesAsync(
   preset: Preset,
   starship: string,
-  o: { prefs?: PreviewPrefs; git?: GitStatus; root?: string } = {},
+  o: { prefs?: PreviewPrefs; git?: GitStatus; root?: string; warning?: boolean } = {},
 ): Promise<string[]> {
   // Inside `root` when given: the panel removes that one folder on exit, even if a preview
   // is still running then.
   const dir = await Deno.makeTempDir({ prefix: "cc-starship-preview-", dir: o.root });
   try {
-    const p = previewCommands(preset, starship, dir, o.prefs, o.git);
+    const p = previewCommands(preset, starship, dir, o.prefs, o.git, o.warning);
     const [bar, prompt] = await Promise.all([
       p.bar.output().catch(() => null),
       p.prompt.output().catch(() => null),
@@ -184,7 +185,8 @@ export async function previewLinesAsync(
   }
 }
 
-function samplePayload() {
+/** A sample session; `warning`: usage high enough to show both kinds of warning chip. */
+function samplePayload(warning = false) {
   const now = Math.floor(Date.now() / 1000);
   return {
     model: { display_name: "Opus 5.5" },
@@ -197,10 +199,10 @@ function samplePayload() {
       total_lines_removed: 23,
       total_duration_ms: 8460000,
     },
-    context_window: { used_percentage: 34, total_input_tokens: 68000 },
+    context_window: { used_percentage: warning ? 92 : 34, total_input_tokens: 68000 },
     rate_limits: {
-      five_hour: { used_percentage: 42, resets_at: now + 5400 },
-      seven_day: { used_percentage: 23, resets_at: now + 3 * 86400 },
+      five_hour: { used_percentage: warning ? 74 : 42, resets_at: now + 5400 },
+      seven_day: { used_percentage: warning ? 91 : 23, resets_at: now + 3 * 86400 },
     },
   };
 }

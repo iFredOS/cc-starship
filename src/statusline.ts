@@ -33,14 +33,11 @@ const ESC = "\x1b";
 // Placeholders resolved once a segment's slot (and so its colors) is known:
 /** back to the segment's text color */
 const RESTORE = "\x00";
-/** back to the segment's background and text color (after a warning chip) */
-const RESTORE_ALL = "\x01";
 /** the preset's accent color, or the segment's text color where the accent is hard to see */
 const ACCENT = "\x02";
-/** the segment's background, as a text color (the arrow into an arrow-shaped chip) */
-const SEGMENT_BG_AS_FG = "\x04";
-/** the segment's background, as a background color (the arrow out of an arrow-shaped chip) */
-const SEGMENT_BG = "\x03";
+/** a warning chip, `\x05 level \x06 text \x07`: its colors depend on the segment it lands in */
+// deno-lint-ignore no-control-regex -- placeholders
+const CHIP_RE = /\x05([wc])\x06(.*?)\x07/g;
 
 // Nerd Font icons, as escapes: raw glyphs are invisible and get lost in edits.
 const ICON = {
@@ -99,16 +96,39 @@ function formatReset(epochSeconds: number | undefined, prefs: { language: Langua
   return epochSeconds ? ` · ${formatWhen(new Date(epochSeconds * 1000), new Date(), prefs)}` : "";
 }
 
-// From 70% an amber chip, from 90% a red one with ▲: dark bold text on the warning
-// color reads on every preset, and the change of shape shows even where the
-// segment's own text is already orange. The chip's ends are powerline arrows
+// From 70% an amber chip, from 90% a red one with ▲, with powerline arrows at both ends
 // (\u{e0b0}, like the bar's own): the segment flows into the chip and the chip back out.
+// The chip's colors are chosen once its segment is known: see chipFor.
 function percent(value?: number): string {
   const p = Math.round(value ?? 0);
   if (p < 70) return `${p}%`;
-  const [color, text] = p >= 90 ? ["#fb4934", `▲${p}%`] : ["#fabd2f", `${p}%`];
-  return `${bg(color)}${SEGMENT_BG_AS_FG}\u{e0b0}${fg("#1d2021")}${ESC}[1m ${text} ${ESC}[22m` +
-    `${SEGMENT_BG}${fg(color)}\u{e0b0}${RESTORE_ALL}`;
+  return p >= 90 ? `\x05c\x06▲${p}%\x07` : `\x05w\x06${p}%\x07`;
+}
+
+const WARNING = { warn: "#fabd2f", crit: "#fb4934" } as const;
+const CHIP_DARK = "#1d2021";
+/**
+ * Below this contrast a chip hardly shows against its segment. Amber and red are that close
+ * only to a bright segment, against which the dark chip is at least 3:1, so the dark chip
+ * never needs a check of its own.
+ */
+const MIN_CHIP_CONTRAST = 1.5;
+
+/**
+ * The colors of a warning chip on a segment with background `segmentBg`: amber or red with
+ * dark text, which reads on most looks; where that nearly matches the segment (Nord's yellow
+ * 5h, Tidepool's amber 7d), a dark chip with amber or red text instead.
+ */
+export function chipFor(level: keyof typeof WARNING, segmentBg: string): { bg: string; fg: string } {
+  const bright = { bg: WARNING[level], fg: CHIP_DARK };
+  return contrast(bright.bg, segmentBg) >= MIN_CHIP_CONTRAST ? bright : { bg: CHIP_DARK, fg: WARNING[level] };
+}
+
+/** A chip token (see CHIP_RE) as colored text, on a segment with these colors. */
+function paintChip(level: string, text: string, seg: { bg: string; fg: string }): string {
+  const chip = chipFor(level === "c" ? "crit" : "warn", seg.bg);
+  return `${bg(chip.bg)}${fg(seg.bg)}\u{e0b0}${fg(chip.fg)}${ESC}[1m ${text} ${ESC}[22m` +
+    `${bg(seg.bg)}${fg(chip.bg)}\u{e0b0}${bg(seg.bg)}${fg(seg.fg)}`;
 }
 
 // Branch name and its " ↑1 ↓2 *" marks from `git status`; "─" outside a repository.
@@ -206,8 +226,10 @@ function directoryLabel(dir: string): string {
   return `${ICON.folder} ${parts.length > 3 ? `…/${parts.slice(-3).join("/")}` : shown}`;
 }
 
-// deno-lint-ignore no-control-regex -- strips ANSI colors and the color placeholders
-const visibleLength = (s: string) => [...s.replace(/\x1b\[[0-9;]*m|[\x00-\x02]/g, "")].length;
+const visibleLength = (s: string) =>
+  // A chip adds a space and an arrow at each end.
+  // deno-lint-ignore no-control-regex -- strips ANSI colors and the color placeholders
+  [...s.replace(CHIP_RE, (_, __, text) => `    ${text}`).replace(/\x1b\[[0-9;]*m|[\x00-\x07]/g, "")].length;
 
 // Start cap, then each segment with a space on both sides and its arrow or end cap.
 const lineWidth = (segments: string[]) => 1 + segments.reduce((w, s) => w + visibleLength(s) + 3, 0);
@@ -313,10 +335,8 @@ export function buildBar(j: Json, opts: BarOptions): { dir: string; vars: Record
       const colors = opts.preset.bar.lines[l - 1][slot];
       const accent = contrast(opts.preset.bar.accent, colors.bg) >= 3 ? opts.preset.bar.accent : colors.fg;
       vars[`CC_L${l}_${slot + 1}`] = s
+        .replace(CHIP_RE, (_, level, text) => paintChip(level, text, colors))
         .replaceAll(ACCENT, fg(accent))
-        .replaceAll(SEGMENT_BG_AS_FG, fg(colors.bg))
-        .replaceAll(SEGMENT_BG, bg(colors.bg))
-        .replaceAll(RESTORE_ALL, bg(colors.bg) + fg(colors.fg))
         .replaceAll(RESTORE, fg(colors.fg));
     });
     vars[`CC_L${l}_END${segments.length + offset}`] = "1";

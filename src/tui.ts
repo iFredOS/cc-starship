@@ -236,6 +236,7 @@ type Key =
   | "yes"
   | "no"
   | "explain"
+  | "warn"
   | "other";
 
 function parseKey(s: string): Key {
@@ -253,6 +254,7 @@ function parseKey(s: string): Key {
   if (s === "y" || s === "Y") return "yes";
   if (s === "n" || s === "N") return "no";
   if (s === "e" || s === "E" || s === "?") return "explain";
+  if (s === "a" || s === "A") return "warn";
   return "other";
 }
 
@@ -299,6 +301,8 @@ export async function runUi(): Promise<number> {
   let fonts = detectNerdFonts();
   let message = "";
   let explain = true;
+  // Previewing the warning chips (usage at 92%, 74%, 91%) instead of the calm sample.
+  let warning = false;
   // A newer release, from the daily check (installs only: nothing is written before one).
   const updatesOn = () => !!state && prefs.updates !== false;
   const knownUpdate = () => (updatesOn() ? newerVersion(readUpdateCache(paths.update()), VERSION) : null);
@@ -324,6 +328,7 @@ export async function runUi(): Promise<number> {
         prefs: resolvePrefs(prefs),
         git,
         root: previewRoot,
+        warning,
       }).catch(() => [] as string[]);
       if (gen !== generation) return;
       previews.set(next.id, lines);
@@ -383,7 +388,7 @@ export async function runUi(): Promise<number> {
       }),
       ...(roomy ? [""] : []),
       ...box(
-        `Preview · ${p.name}`,
+        `Preview · ${p.name}${warning ? " · warnings" : ""}`,
         !info
           ? [paint(t.dim, "(the preview appears once Starship is installed)")]
           : preview(p)
@@ -396,6 +401,7 @@ export async function runUi(): Promise<number> {
       ...footer([
         ["↑↓←→", "choose"],
         ["⏎", state ? "use this look" : "install with this look"],
+        ["A", warning ? "calm sample" : "warning sample"],
         ...(eKey ? [["E", explain ? "hide explanations" : "explanations"] as [string, string]] : []),
         ...(state ? [["U", "uninstall"] as [string, string]] : []),
         ["Tab", "components"],
@@ -635,6 +641,10 @@ export async function runUi(): Promise<number> {
 
   const onLooksKey = async (key: Key) => {
     if (key === "explain") explain = !explain;
+    if (key === "warn") {
+      warning = !warning;
+      warm();
+    }
     if (key === "up") index = (index - 1 + presets.length) % presets.length;
     if (key === "down") index = (index + 1) % presets.length;
     if (key === "left" || key === "right") {
