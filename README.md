@@ -140,6 +140,11 @@ Reset times read naturally: today shows the time (`2:38 AM`), another day this w
 The shell prompt shows your 5-hour and 7-day usage too (`✻ 5h 42% · 7d 23%`), saved by the
 status bar each time it refreshes.
 
+**Several Claude accounts** (one `CLAUDE_CONFIG_DIR` each): limits are per account, so each
+account's numbers are saved in their own file in the install folder: `usage` for the stock
+`~/.claude`, `usage-<name>` for `~/.claude-<name>`, `usage-<8 hex>` for any other folder. The
+prompt and *Usage for Claude* read the file of the account they run under.
+
 ## Add-ons
 
 Each is a switch on the Components screen, on by default.
