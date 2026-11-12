@@ -63,7 +63,7 @@ export const paths = {
  */
 export function accountName(configDir: string | undefined, homeDir: string): string {
   const dir = (configDir ?? "").replace(/[\\/]+$/, "");
-  if (!dir || dir === join(homeDir, ".claude")) return "main";
+  if (isStockAccount(configDir, homeDir)) return "main";
   const name = basename(dir);
   if (name.startsWith(".claude-") && name.length > ".claude-".length) return name.slice(".claude-".length);
   return createHash("sha256").update(dir).digest("hex").slice(0, 8);
@@ -74,8 +74,14 @@ export function accountName(configDir: string | undefined, homeDir: string): str
  * file the last account to draw its bar overwrote the others. Main keeps the original name, "usage".
  */
 export function usageFile(dir: string, configDir: string | undefined, homeDir: string): string {
-  const account = accountName(configDir, homeDir);
-  return join(dir, account === "main" ? "usage" : `usage-${account}`);
+  // Asked of the folder, not the name: a profile called ~/.claude-main is "main" too.
+  return join(dir, isStockAccount(configDir, homeDir) ? "usage" : `usage-${accountName(configDir, homeDir)}`);
+}
+
+/** No CLAUDE_CONFIG_DIR, or the stock ~/.claude. */
+function isStockAccount(configDir: string | undefined, homeDir: string): boolean {
+  const dir = (configDir ?? "").replace(/[\\/]+$/, "");
+  return !dir || dir === join(homeDir, ".claude");
 }
 
 export interface State {

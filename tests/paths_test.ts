@@ -28,3 +28,7 @@ Deno.test("each account saves its 5h/7d usage in its own file; main keeps the ol
   assertEquals(usageFile(DIR, "/Users/me/.claude", HOME), join(DIR, "usage"));
   assertEquals(usageFile(DIR, "/Users/me/.claude-ifcote@duck.com", HOME), join(DIR, "usage-ifcote@duck.com"));
 });
+
+Deno.test("a profile folder named ~/.claude-main doesn't share the stock account's file", () => {
+  assertEquals(usageFile(DIR, "/Users/me/.claude-main", HOME), join(DIR, "usage-main"));
+});
