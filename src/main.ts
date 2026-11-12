@@ -1,5 +1,6 @@
 // cc-starship: installer, uninstaller and runtime for a Starship-rendered
 // Claude Code status bar and matching shell prompt.
+import { currentBuild, currentHost, releaseKind, versionLine } from "./version.ts";
 import {
   claudeStatusLine,
   compiled,
@@ -84,7 +85,9 @@ async function status(): Promise<number> {
   }
   const on = (b: boolean) => (b ? "on" : "off");
   const newer = newerVersion(readUpdateCache(paths.update()), VERSION);
-  console.log(`version:    ${VERSION}${newer ? ` (${newer} available: ${RELEASES})` : ""}`);
+  const b = currentBuild();
+  const build = `${VERSION} (${b.build ?? "unknown"} · ${b.commit ?? "unknown"})`;
+  console.log(`version:    ${build}${newer ? `, ${newer} available: ${RELEASES}` : ""}`);
   console.log(`installed:  ${state ? `yes, ${findPreset(state.theme)?.name}` : "no"}`);
   if (state) {
     const c = state.components;
@@ -323,7 +326,7 @@ export async function main(args: string[]): Promise<number> {
     }
     case "--version":
     case "version":
-      console.log(VERSION);
+      console.log(versionLine(currentBuild(), releaseKind(), currentHost()));
       return 0;
     default:
       console.log(HELP);

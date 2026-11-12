@@ -4,6 +4,7 @@ import {
   checkDue,
   newerVersion,
   offerUpdate,
+  parseVersionOutput,
   readUpdateCache,
   saveUpdateCheck,
   tagFromLocation,
@@ -57,4 +58,14 @@ Deno.test("update: a downloaded copy newer than the installed one offers to upda
   assertEquals(offerUpdate("1.0.1", "1.0.1"), false);
   assertEquals(offerUpdate("1.0.0", "1.0.1"), false, "never a downgrade");
   assertEquals(offerUpdate("1.0.2", null), false, "installed version unknown");
+});
+
+Deno.test("update: an installed copy's version is read from old and new --version output", () => {
+  assertEquals(parseVersionOutput("1.1.0\n"), "1.1.0", "1.0–1.2 printed the bare version");
+  assertEquals(
+    parseVersionOutput("cc-starship 1.3.0 (176 · fae1f44) release · macOS 27.3 arm64\n"),
+    "1.3.0",
+  );
+  assertEquals(parseVersionOutput("starship 1.27.0\n"), null, "another program");
+  assertEquals(parseVersionOutput(""), null);
 });

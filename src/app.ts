@@ -3,14 +3,14 @@ import { basename, join } from "node:path";
 import { type Components, install, runningFromInstallDir, shellProfiles, uninstall } from "./engine.ts";
 import { ompNotes } from "./omp.ts";
 import { detectNerdFonts, FONTS, installFont } from "./fonts.ts";
-import { isWindows, paths, readState } from "./paths.ts";
+import { home, isWindows, paths, readState, usageFile } from "./paths.ts";
 import { TERMINAL_FONT } from "./terminal.ts";
 import { barConfig, type Preset, shellConfig } from "./presets.ts";
 import { downloadStarship, findStarship, latestVersion, runUpdate, updatePlan } from "./starship.ts";
 import { barCommand, barOutput, type GitStatus } from "./statusline.ts";
 import type { Clock, Language, Prefs } from "./when.ts";
 
-export const VERSION = "1.2.0";
+export { VERSION } from "./version.ts";
 /** A built cc-starship (not `deno run`): only it copies itself into place or runs itself. */
 export const compiled = basename(Deno.execPath()).startsWith("cc-starship");
 
@@ -122,7 +122,8 @@ function previewCommands(
     configPath: bar,
     starship,
     accountEmail: "you@example.com",
-    usageFile: join(dir, "usage"),
+    // The file the prompt's `cc-starship usage` will read: it runs under this account too.
+    usageFile: usageFile(dir, Deno.env.get("CLAUDE_CONFIG_DIR"), home()),
     prefs,
     git,
   });

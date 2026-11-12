@@ -126,10 +126,14 @@ The status bar and the prompt always change together.
 | 2 | folder · branch or worktree (↑ ahead, ↓ behind, `*` uncommitted, `󰙅 2 more` when the repo has other worktrees) · lines added/removed · session time |
 | 3 | context used, tokens and cost · 5-hour limit · 7-day limit, each with its reset time · a newer cc-starship, when there is one (see [Updating](#updating)) |
 
-Reset times read naturally: today shows the time (`2:38 AM`), another day this week its weekday
-(`Tue 1:08 AM`), later the date (`Oct 30 6 PM`). In French: `mar. 1 h 08`, `30 oct. 18 h`.
+Reset times read naturally and stay short: today shows the time (`2:38AM`), another day this week
+its weekday (`Tue 1:08AM`), later the date (`Oct 30 6PM`). In French: `mar. 1h08`, `30 oct. 18h`.
 
-**Warnings stand out:** a percentage becomes an amber chip at 70% and a red ▲ chip at 90%, shaped with powerline arrows so it blends into the segment. Where amber or red would nearly match the segment's own color (a yellow segment in Nord, say), the chip turns dark with amber or red text instead. In the control panel, **A** previews any look with its warnings showing.
+**Percentages are chips** with powerline arrows at both ends, so they flow with the bar. Below
+70% the chip is a calm shade of its segment. **Warnings stand out:** at 70% it turns amber, at 90%
+red with ▲. Where amber or red would nearly match the segment's own color (Nord's yellow 5-hour
+segment, say), the chip is a deep shade of that segment with amber or red text instead. In the
+control panel, **A** previews any look with its warnings showing.
 
 ![Red chip for context at 92%, amber chip for the 5-hour limit at 74%](docs/images/warnings.png)
 
@@ -180,7 +184,7 @@ cc-starship theme [NAME]                    # switch look, or show the current o
 cc-starship components [bar|shell|usage|hook|memory|terminal] [on|off]
 cc-starship prefs [language auto|en|fr-CA] [clock auto|24h|12h] [hook-from 0|50|70|90] [updates on|off]
 cc-starship status                          # version, parts, Starship, Nerd Fonts, notes
-cc-starship --version
+cc-starship --version                       # the line to quote in a bug report, e.g. cc-starship 1.3.0 (52 · 1a2b3c4) release · macOS 27.3 arm64
 cc-starship font list | install ID | remove ID
 cc-starship starship update | remove
 cc-starship presets | preview [NAME]

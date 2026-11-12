@@ -11,31 +11,31 @@ const fr12 = { language: "fr-CA", clock: "12h" } as const;
 
 Deno.test("today shows only the time", () => {
   assertEquals(formatWhen(at(0, 23, 45), now, en24), "23:45");
-  assertEquals(formatWhen(at(0, 23, 45), now, en12), "11:45 PM");
-  assertEquals(formatWhen(at(0, 23, 45), now, fr24), "23 h 45");
+  assertEquals(formatWhen(at(0, 23, 45), now, en12), "11:45PM");
+  assertEquals(formatWhen(at(0, 23, 45), now, fr24), "23h45");
 });
 
-Deno.test("another day shows its weekday, even tomorrow; 12 h drops :00 on the hour", () => {
+Deno.test("another day shows its weekday, even tomorrow; 12 h drops :00 on the hour; times are tight (9h05, 6PM)", () => {
   assertEquals(formatWhen(at(1, 18), now, en24), "Sat 18:00");
-  assertEquals(formatWhen(at(1, 18), now, en12), "Sat 6 PM");
-  assertEquals(formatWhen(at(1, 2), now, en12), "Sat 2 AM");
-  assertEquals(formatWhen(at(1, 18), now, fr24), "sam. 18 h");
-  assertEquals(formatWhen(at(1, 9, 5), now, fr24), "sam. 9 h 05");
-  assertEquals(formatWhen(at(1, 18, 30), now, fr12), "sam. 6 h 30 p.m.");
+  assertEquals(formatWhen(at(1, 18), now, en12), "Sat 6PM");
+  assertEquals(formatWhen(at(1, 2), now, en12), "Sat 2AM");
+  assertEquals(formatWhen(at(1, 18), now, fr24), "sam. 18h");
+  assertEquals(formatWhen(at(1, 9, 5), now, fr24), "sam. 9h05");
+  assertEquals(formatWhen(at(1, 18, 30), now, fr12), "sam. 6h30 p.m.");
 });
 
 Deno.test("within the week: the weekday", () => {
   assertEquals(formatWhen(at(2, 3, 33), now, en24), "Sun 03:33");
-  assertEquals(formatWhen(at(2, 3, 33), now, en12), "Sun 3:33 AM");
-  assertEquals(formatWhen(at(2, 3, 33), now, fr24), "dim. 3 h 33");
-  assertEquals(formatWhen(at(6, 12), now, fr24), "jeu. 12 h");
+  assertEquals(formatWhen(at(2, 3, 33), now, en12), "Sun 3:33AM");
+  assertEquals(formatWhen(at(2, 3, 33), now, fr24), "dim. 3h33");
+  assertEquals(formatWhen(at(6, 12), now, fr24), "jeu. 12h");
 });
 
 Deno.test("a week or more away: the date", () => {
   assertEquals(formatWhen(at(7, 18), now, en24), "Oct 30 18:00");
-  assertEquals(formatWhen(at(10, 0, 15), now, en12), "Nov 2 12:15 AM");
-  assertEquals(formatWhen(at(7, 18), now, fr24), "30 oct. 18 h");
-  assertEquals(formatWhen(new Date(2026, 7, 2, 8), new Date(2026, 6, 20), fr24), "2 août 8 h");
+  assertEquals(formatWhen(at(10, 0, 15), now, en12), "Nov 2 12:15AM");
+  assertEquals(formatWhen(at(7, 18), now, fr24), "30 oct. 18h");
+  assertEquals(formatWhen(new Date(2026, 7, 2, 8), new Date(2026, 6, 20), fr24), "2 août 8h");
 });
 
 Deno.test("auto picks language and clock from the system locale", () => {

@@ -3,7 +3,7 @@
 // formats follow the cc-memento oh-my-posh bar, with Nerd Font icons.
 import { mkdirSync, renameSync, writeFileSync } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
-import { bg, contrast, fg } from "./color.ts";
+import { bg, contrast, fg, mix } from "./color.ts";
 import { saveSnapshot } from "./hook.ts";
 import { home } from "./paths.ts";
 import type { Preset } from "./presets.ts";
@@ -37,7 +37,7 @@ const RESTORE = "\x00";
 const ACCENT = "\x02";
 /** a warning chip, `\x05 level \x06 text \x07`: its colors depend on the segment it lands in */
 // deno-lint-ignore no-control-regex -- placeholders
-const CHIP_RE = /\x05([wc])\x06(.*?)\x07/g;
+const CHIP_RE = /\x05([nwc])\x06(.*?)\x07/g;
 
 // Nerd Font icons, as escapes: raw glyphs are invisible and get lost in edits.
 const ICON = {
@@ -86,48 +86,66 @@ function formatDuration(ms: number): string {
   const s = Math.floor(ms / 1e3);
   const h = Math.floor(s / 3600);
   const m = Math.floor((s % 3600) / 60);
-  if (h > 0) return `${h}h ${m}m`;
+  if (h > 0) return `${h}h${m}m`;
   if (m > 0) return `${m}m`;
   return `${s}s`;
 }
 
-// " · 6 PM", " · Sat 18:00", " · sam. 18 h": see formatWhen.
-function formatReset(epochSeconds: number | undefined, prefs: { language: Language; clock: Clock }): string {
-  return epochSeconds ? ` · ${formatWhen(new Date(epochSeconds * 1000), new Date(), prefs)}` : "";
+// " 6PM", " Sat 18:00", " sam. 18h" (see formatWhen): after a chip its arrow already
+// separates them; after "Extra" a " · " does.
+function formatReset(
+  epochSeconds: number | undefined,
+  prefs: { language: Language; clock: Clock },
+  separator = " ",
+): string {
+  return epochSeconds ? `${separator}${formatWhen(new Date(epochSeconds * 1000), new Date(), prefs)}` : "";
 }
 
-// From 70% an amber chip, from 90% a red one with ▲, with powerline arrows at both ends
-// (\u{e0b0}, like the bar's own): the segment flows into the chip and the chip back out.
-// The chip's colors are chosen once its segment is known: see chipFor.
+// Every percentage is a chip with powerline arrows at both ends (\u{e0b0}, like the bar's
+// own): the segment flows into the chip and the chip back out. Below 70% a calm one, a shade
+// of its segment; from 70% amber, from 90% red with ▲. Colors are chosen once the segment
+// is known: see paintChip.
 function percent(value?: number): string {
   const p = Math.round(value ?? 0);
-  if (p < 70) return `${p}%`;
-  return p >= 90 ? `\x05c\x06▲${p}%\x07` : `\x05w\x06${p}%\x07`;
+  const level = p >= 90 ? "c" : p >= 70 ? "w" : "n";
+  return `\x05${level}\x06${p >= 90 ? "▲" : ""}${p}%\x07`;
 }
 
 const WARNING = { warn: "#fabd2f", crit: "#fb4934" } as const;
 const CHIP_DARK = "#1d2021";
-/**
- * Below this contrast a chip hardly shows against its segment. Amber and red are that close
- * only to a bright segment, against which the dark chip is at least 3:1, so the dark chip
- * never needs a check of its own.
- */
+/** Below this contrast a chip hardly shows against its segment. */
 const MIN_CHIP_CONTRAST = 1.5;
+/**
+ * How far toward black the fallback chip takes its segment's color. Amber and red only come
+ * that close to a bright segment, so the shade is dark: at 0.7, amber or red text on it reads
+ * at 4.3:1 or more on every look (tested).
+ */
+const DEEP_SHADE = 0.7;
 
 /**
  * The colors of a warning chip on a segment with background `segmentBg`: amber or red with
  * dark text, which reads on most looks; where that nearly matches the segment (Nord's yellow
- * 5h, Tidepool's amber 7d), a dark chip with amber or red text instead.
+ * 5h, Tidepool's amber 7d), a deep shade of the segment's own color with amber or red text,
+ * so the chip still looks part of the bar.
  */
 export function chipFor(level: keyof typeof WARNING, segmentBg: string): { bg: string; fg: string } {
   const bright = { bg: WARNING[level], fg: CHIP_DARK };
-  return contrast(bright.bg, segmentBg) >= MIN_CHIP_CONTRAST ? bright : { bg: CHIP_DARK, fg: WARNING[level] };
+  return contrast(bright.bg, segmentBg) >= MIN_CHIP_CONTRAST
+    ? bright
+    : { bg: mix(segmentBg, "#000000", DEEP_SHADE), fg: WARNING[level] };
 }
+
+/** How far a calm chip's color moves from its segment's toward the segment's text. */
+const CALM_SHADE = 0.2;
 
 /** A chip token (see CHIP_RE) as colored text, on a segment with these colors. */
 function paintChip(level: string, text: string, seg: { bg: string; fg: string }): string {
-  const chip = chipFor(level === "c" ? "crit" : "warn", seg.bg);
-  return `${bg(chip.bg)}${fg(seg.bg)}\u{e0b0}${fg(chip.fg)}${ESC}[1m ${text} ${ESC}[22m` +
+  const calm = level === "n";
+  const chip = calm
+    ? { bg: mix(seg.bg, seg.fg, CALM_SHADE), fg: seg.fg }
+    : chipFor(level === "c" ? "crit" : "warn", seg.bg);
+  const label = calm ? ` ${text} ` : `${ESC}[1m ${text} ${ESC}[22m`;
+  return `${bg(chip.bg)}${fg(seg.bg)}\u{e0b0}${fg(chip.fg)}${label}` +
     `${bg(seg.bg)}${fg(chip.bg)}\u{e0b0}${bg(seg.bg)}${fg(seg.fg)}`;
 }
 
@@ -319,7 +337,8 @@ export function buildBar(j: Json, opts: BarOptions): { dir: string; vars: Record
     context: `${ICON.context} CTX ${percent(ctx.used_percentage)} / ${
       formatTokens(ctx.total_input_tokens ?? 0)
     } ($${(cost.total_cost_usd ?? 0).toFixed(2)})`,
-    fiveHour: fiveHourUsage && fiveHourUsage + formatReset(fiveHour.resets_at, prefs),
+    fiveHour: fiveHourUsage &&
+      fiveHourUsage + formatReset(fiveHour.resets_at, prefs, fiveHour.used_percentage >= 100 ? " · " : " "),
     sevenDay: sevenDayUsage && sevenDayUsage + formatReset(sevenDay.resets_at, prefs),
     update: opts.update && `${accent(ICON.update)} cc-starship ${opts.update}`,
   }, [{ update: null }, { sevenDay: sevenDayUsage }, { fiveHour: fiveHourUsage }, { sevenDay: null }, {

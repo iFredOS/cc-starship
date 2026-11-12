@@ -36,7 +36,7 @@ Deno.test("hook: the session's last status bar numbers, with reset times", () =>
     hookOutput(JSON.stringify({ session_id: "abc-123", prompt: "hi" }), { ...o, prefs: en12, now }),
   );
   for (
-    const part of ["context 65%", "130k tokens", "5h 21%", "resets Sat 2 AM", "7d 25%", "resets Sat 6 PM"]
+    const part of ["context 65%", "130k tokens", "5h 21%", "resets Sat 2AM", "7d 25%", "resets Sat 6PM"]
   ) {
     assertStringIncludes(text, part);
   }
@@ -52,7 +52,7 @@ Deno.test("hook: reset times follow the language and clock", () => {
       now,
     }),
   );
-  assertStringIncludes(text, "sam. 18 h");
+  assertStringIncludes(text, "sam. 18h");
 });
 
 Deno.test("hook: a new session without its own numbers yet falls back to the shared 5h/7d", () => {

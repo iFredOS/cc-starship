@@ -1,6 +1,6 @@
 import { assert, assertEquals, assertStringIncludes } from "@std/assert";
 import { join } from "node:path";
-import { contrast } from "../src/color.ts";
+import { contrast, mix } from "../src/color.ts";
 import { allPresets, findPreset } from "../src/presets.ts";
 import { buildBar, chipFor } from "../src/statusline.ts";
 import { formatWhen } from "../src/when.ts";
@@ -18,10 +18,10 @@ Deno.test("full payload shows every segment", () => {
       "\uf02b v2.1.290",
       "\uf007 you@example.com",
       "\uf07b /tmp",
-      "\uf440 +156/−23 · \uf017 2h 21m",
-      "\uf1c0 CTX 8% / 15.5K ($1.23)",
-      "\uf252 5h 42%",
-      "\uf073 7d 13%",
+      "\uf440 +156/−23 · \uf017 2h21m",
+      "\uf1c0 CTX \u{e0b0} 8% \u{e0b0} / 15.5K ($1.23)",
+      "\uf252 5h \u{e0b0} 42% \u{e0b0}",
+      "\uf073 7d \u{e0b0} 13% \u{e0b0}",
     ]
   ) assertStringIncludes(out, s);
   const lines = out.split("\n");
@@ -34,7 +34,7 @@ Deno.test("full payload shows every segment", () => {
 Deno.test("minimal payload keeps caps and hides optional segments", () => {
   const out = plain(payload(), { email: "" });
   assertStringIncludes(out, "✻ Opus 5.5");
-  assertStringIncludes(out, "CTX 0% / 0 ($0.00)");
+  assertStringIncludes(out, "CTX \u{e0b0} 0% \u{e0b0} / 0 ($0.00)");
   for (const s of ["5h", "◐", "undefined", "NaN", "\uf007"]) assert(!out.includes(s), s);
   for (const line of out.split("\n")) {
     assert(line.startsWith(CAP_START) && line.trimEnd().endsWith(CAP_END), line);
@@ -58,8 +58,8 @@ Deno.test("reset times follow the chosen language and clock", () => {
   for (const prefs of [{ language: "en", clock: "12h" }, { language: "fr-CA", clock: "24h" }] as const) {
     const out = plain(limits, { prefs });
     const when = (t: number) => formatWhen(new Date(t * 1000), new Date(), prefs);
-    assertStringIncludes(out, `5h 1% · ${when(soon)}`);
-    assertStringIncludes(out, `7d 23% · ${when(later)}`);
+    assertStringIncludes(out, `5h \u{e0b0} 1% \u{e0b0} ${when(soon)}`);
+    assertStringIncludes(out, `7d \u{e0b0} 23% \u{e0b0} ${when(later)}`);
   }
 });
 
@@ -150,7 +150,7 @@ Deno.test("narrow terminals: every line fits, essentials stay", () => {
     const out = plain(fixture, { columns });
     for (const line of out.split("\n")) assert([...line].length <= columns, `${columns}: ${line}`);
     assertStringIncludes(out, "✻ Opus 5.5");
-    assertStringIncludes(out, "CTX 8%");
+    assertStringIncludes(out, "CTX \u{e0b0} 8% \u{e0b0}");
   }
   assert(!plain(fixture, { columns: 45 }).includes("you@example.com"));
   assertStringIncludes(plain(fixture, { columns: 200 }), "you@example.com");
@@ -269,10 +269,10 @@ Deno.test("a chip keeps its amber or red on a segment where that stands out", ()
   assertEquals(chipFor("crit", "#32302f"), { bg: "#fb4934", fg: "#1d2021" });
 });
 
-Deno.test("a chip turns dark with amber text where amber would vanish into the segment", () => {
-  // Nord's 5h segment is itself yellow.
-  assertEquals(chipFor("warn", "#ebcb8b"), { bg: "#1d2021", fg: "#fabd2f" });
-  assertEquals(chipFor("crit", "#f04a38"), { bg: "#1d2021", fg: "#fb4934" });
+Deno.test("where amber or red would vanish into the segment, the chip is a deep shade of it", () => {
+  // Nord's 5h segment is itself yellow: #ebcb8b at 30%.
+  assertEquals(chipFor("warn", "#ebcb8b"), { bg: "#473d2a", fg: "#fabd2f" });
+  assertEquals(chipFor("crit", "#f04a38"), { bg: "#481611", fg: "#fb4934" });
 });
 
 Deno.test("in every look, every segment of line 3 shows its warning chips", () => {
@@ -280,16 +280,15 @@ Deno.test("in every look, every segment of line 3 shows its warning chips", () =
     for (const [slot, { bg }] of p.bar.lines[2].entries()) {
       for (const level of ["warn", "crit"] as const) {
         const chip = chipFor(level, bg);
-        assert(
-          contrast(chip.bg, bg) >= 1.5,
-          `${p.id} slot ${slot} ${level}: ${contrast(chip.bg, bg).toFixed(2)}`,
-        );
+        const edge = contrast(chip.bg, bg), text = contrast(chip.fg, chip.bg);
+        assert(edge >= 1.5, `${p.id} slot ${slot} ${level}: chip vs segment ${edge.toFixed(2)}`);
+        assert(text >= 4, `${p.id} slot ${slot} ${level}: text ${text.toFixed(2)}`);
       }
     }
   }
 });
 
-Deno.test("on Nord's yellow 5h segment the chip is dark with amber text, and no chip token leaks", () => {
+Deno.test("on Nord's yellow 5h segment the chip is a deep shade with amber text, and no chip token leaks", () => {
   const out = bar(
     payload({ rate_limits: { five_hour: { used_percentage: 75 }, seven_day: { used_percentage: 10 } } }),
     { preset: "nord" },
@@ -299,13 +298,43 @@ Deno.test("on Nord's yellow 5h segment the chip is dark with amber text, and no 
   const seg = nord.bar.lines[2][1];
   assertStringIncludes(
     out,
-    `\x1b[48;2;${rgb("#1d2021")}m\x1b[38;2;${rgb(seg.bg)}m\u{e0b0}\x1b[38;2;${
+    `\x1b[48;2;${rgb("#473d2a")}m\x1b[38;2;${rgb(seg.bg)}m\u{e0b0}\x1b[38;2;${
       rgb("#fabd2f")
     }m\x1b[1m 75% \x1b[22m` +
-      `\x1b[48;2;${rgb(seg.bg)}m\x1b[38;2;${rgb("#1d2021")}m\u{e0b0}\x1b[48;2;${rgb(seg.bg)}m\x1b[38;2;${
+      `\x1b[48;2;${rgb(seg.bg)}m\x1b[38;2;${rgb("#473d2a")}m\u{e0b0}\x1b[48;2;${rgb(seg.bg)}m\x1b[38;2;${
         rgb(seg.fg)
       }m`,
   );
   // deno-lint-ignore no-control-regex -- the chip's placeholder bytes
   assert(!/[\x00-\x07]/.test(out), "an unresolved chip token");
+});
+
+Deno.test("below 70% a percentage is a calm chip: the segment's color a shade toward its text", () => {
+  assertEquals(mix("#000000", "#ffffff", 0.2), "#333333");
+  const out = bar(
+    payload({ rate_limits: { five_hour: { used_percentage: 42 }, seven_day: { used_percentage: 10 } } }),
+    { preset: "fusain" },
+  );
+  const fusain = JSON.parse(Deno.readTextFileSync(new URL("../presets/presets.json", import.meta.url)))
+    .find((p: { id: string }) => p.id === "fusain");
+  const seg = fusain.bar.lines[2][1];
+  const calm = mix(seg.bg, seg.fg, 0.2);
+  assertStringIncludes(
+    out,
+    `\x1b[48;2;${rgb(calm)}m\x1b[38;2;${rgb(seg.bg)}m\u{e0b0}\x1b[38;2;${rgb(seg.fg)}m 42% ` +
+      `\x1b[48;2;${rgb(seg.bg)}m\x1b[38;2;${rgb(calm)}m\u{e0b0}`,
+  );
+  assert(!out.includes("\x1b[1m 42%"), "calm chips aren't bold");
+});
+
+Deno.test("a spent 5-hour window keeps its · before the reset time (no chip there)", () => {
+  const out = plain(
+    payload({
+      rate_limits: {
+        five_hour: { used_percentage: 100, resets_at: now() + 3600 },
+        seven_day: { used_percentage: 40 },
+      },
+    }),
+  );
+  assertStringIncludes(out, "\uf071 Extra · ");
 });

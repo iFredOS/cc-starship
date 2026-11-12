@@ -87,7 +87,7 @@ Deno.test("components panel: language and clock rows show the choice and a sampl
     "\n",
   );
   assert(fr.includes("Français (Québec)") && fr.includes("24 h"), fr);
-  assert(/(dim|lun|mar|mer|jeu|ven|sam)\. 18 h/.test(fr), "sample reset in the chosen format: " + fr);
+  assert(/(dim|lun|mar|mer|jeu|ven|sam)\. 18h/.test(fr), "sample reset in the chosen format: " + fr);
 });
 
 Deno.test("components panel: the add-ons, and what the usage hook costs in tokens", () => {

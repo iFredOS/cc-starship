@@ -1,5 +1,6 @@
-// Reset times in the user's language and clock: "18:00", "Sat 6 PM",
-// "sam. 18 h", "30 oct. 18 h". Québécois French follows OQLF style (18 h 30).
+// Reset times in the user's language and clock: "18:00", "Sat 6PM", "sam. 18h",
+// "30 oct. 18h30". Tight on purpose (Québécois "18h30", not OQLF's "18 h 30"): the
+// status bar has little room.
 
 export type Language = "en" | "fr-CA";
 export type Clock = "24h" | "12h";
@@ -59,9 +60,9 @@ function time(d: Date, language: Language, clock: Clock): string {
   if (language === "fr-CA") {
     const hour = clock === "12h" ? (h + 11) % 12 + 1 : h;
     const suffix = clock === "12h" ? (h < 12 ? " a.m." : " p.m.") : "";
-    return `${hour} h${m ? ` ${mm}` : ""}${suffix}`;
+    return `${hour}h${m ? mm : ""}${suffix}`;
   }
-  if (clock === "12h") return `${(h + 11) % 12 + 1}${m ? `:${mm}` : ""} ${h < 12 ? "AM" : "PM"}`;
+  if (clock === "12h") return `${(h + 11) % 12 + 1}${m ? `:${mm}` : ""}${h < 12 ? "AM" : "PM"}`;
   return `${String(h).padStart(2, "0")}:${mm}`;
 }
 

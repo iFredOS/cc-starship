@@ -5,6 +5,12 @@ export const rgb = (hex: string) => hex.match(/\w\w/g)!.map((h) => parseInt(h, 1
 export const fg = (hex: string) => `${ESC}[38;2;${rgb(hex).join(";")}m`;
 export const bg = (hex: string) => `${ESC}[48;2;${rgb(hex).join(";")}m`;
 
+/** The color `t` of the way from `a` to `b` (0 = a, 1 = b). */
+export function mix(a: string, b: string, t: number): string {
+  const [x, y] = [rgb(a), rgb(b)];
+  return "#" + x.map((c, i) => Math.round(c + (y[i] - c) * t).toString(16).padStart(2, "0")).join("");
+}
+
 /** WCAG contrast ratio between two colors. */
 export function contrast(a: string, b: string): number {
   const lum = (hex: string) => {

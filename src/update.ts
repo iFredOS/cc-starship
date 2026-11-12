@@ -49,12 +49,20 @@ export const checkDue = (cache: UpdateCache | null, now = Date.now()) =>
 export const offerUpdate = (running: string, installed: string | null) =>
   installed !== null && compareVersions(running, installed) > 0;
 
+/**
+ * The version in a cc-starship's `--version` output: a bare "1.1.0" (1.0 to 1.2) or the line
+ * "cc-starship 1.3.0 (176 · fae1f44) release · …" (1.3 on).
+ */
+export function parseVersionOutput(text: string): string | null {
+  return text.trim().match(/^(?:cc-starship )?(\d+\.\d+\.\d+)(?:$| \()/)?.[1] ?? null;
+}
+
 /** The version a cc-starship program reports, or null when it can't be run. */
 export async function versionOf(bin: string): Promise<string | null> {
   try {
     const out = await new Deno.Command(bin, { args: ["--version"], stdout: "piped", stderr: "null" })
       .output();
-    return new TextDecoder().decode(out.stdout).trim().match(/^\d+\.\d+\.\d+$/)?.[0] ?? null;
+    return parseVersionOutput(new TextDecoder().decode(out.stdout));
   } catch {
     return null;
   }
