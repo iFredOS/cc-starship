@@ -34,9 +34,11 @@ Deno.test("knows who installed starship", () => {
   assertEquals(managedBy("C:\\Program Files\\starship\\bin\\starship.exe"), "winget");
   assertEquals(managedBy("C:\\Users\\me\\scoop\\shims\\starship.exe"), "scoop");
   assertEquals(
+    // `real` given, so the test never touches /home (an automount point on macOS that can hang).
     managedBy(
       "/home/me/.local/share/cc-starship/bin/starship",
       "/home/me/.local/share/cc-starship",
+      "/home/me/.local/share/cc-starship/bin/starship",
     ),
     "ours",
   );
