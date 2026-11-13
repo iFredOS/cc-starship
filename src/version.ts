@@ -2,7 +2,7 @@
 // commit date that `deno task build` writes to dist/build.json and embeds in the binary.
 // Shown by --version as one line for bug reports: cc-starship 1.3.0 (176 · fae1f44) release · macOS 27.3 arm64
 
-export const VERSION = "1.3.2";
+export const VERSION = "1.3.3";
 
 export interface BuildInfo {
   version: string;

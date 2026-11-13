@@ -135,15 +135,28 @@ export function chipFor(level: keyof typeof WARNING, segmentBg: string): { bg: s
     : { bg: mix(segmentBg, "#000000", DEEP_SHADE), fg: WARNING[level] };
 }
 
-/** How far a calm chip's color moves from its segment's toward the segment's text. */
+/** A light calm chip: this far from its segment's color toward the segment's text. */
 const CALM_SHADE = 0.2;
+/** A deep calm chip: this far from its segment's color away from the text (toward black or white). */
+const CALM_DEEP = 0.3;
+/** A deep calm chip must stay at least this far from a dark terminal background, or it reads as a hole. */
+const CALM_MIN_FROM_TERMINAL = 1.75;
+
+/**
+ * The background of a chip below 70% (choice "C", 2026-11-13, by a blind panel of three model families):
+ * shaded away from the text, which makes the number easier to read, where that keeps the chip clear of a dark
+ * terminal (Sunset, Autumn, Tidepool, Jewel 5h; Nord's yellow 5h); elsewhere, on dark segments, the light shade.
+ */
+export function calmChip(seg: { bg: string; fg: string }): string {
+  const lightText = contrast(seg.fg, "#000000") > contrast(seg.fg, "#ffffff");
+  const deep = mix(seg.bg, lightText ? "#000000" : "#ffffff", CALM_DEEP);
+  return contrast(deep, CHIP_DARK) >= CALM_MIN_FROM_TERMINAL ? deep : mix(seg.bg, seg.fg, CALM_SHADE);
+}
 
 /** A chip token (see CHIP_RE) as colored text, on a segment with these colors. */
 function paintChip(level: string, text: string, seg: { bg: string; fg: string }): string {
   const calm = level === "n";
-  const chip = calm
-    ? { bg: mix(seg.bg, seg.fg, CALM_SHADE), fg: seg.fg }
-    : chipFor(level === "c" ? "crit" : "warn", seg.bg);
+  const chip = calm ? { bg: calmChip(seg), fg: seg.fg } : chipFor(level === "c" ? "crit" : "warn", seg.bg);
   const label = calm ? ` ${text} ` : `${ESC}[1m ${text} ${ESC}[22m`;
   return `${bg(chip.bg)}${fg(seg.bg)}\u{e0b0}${fg(chip.fg)}${label}` +
     `${bg(seg.bg)}${fg(chip.bg)}\u{e0b0}${bg(seg.bg)}${fg(seg.fg)}`;

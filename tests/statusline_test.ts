@@ -2,7 +2,7 @@ import { assert, assertEquals, assertStringIncludes } from "@std/assert";
 import { join } from "node:path";
 import { contrast, mix } from "../src/color.ts";
 import { allPresets, findPreset } from "../src/presets.ts";
-import { buildBar, chipFor } from "../src/statusline.ts";
+import { buildBar, calmChip, chipFor } from "../src/statusline.ts";
 import { formatWhen } from "../src/when.ts";
 import { bar, barWith, fixture, git, now, payload, plain, stripAnsi, tempDir } from "./helpers.ts";
 
@@ -349,4 +349,31 @@ Deno.test("session time pads its minutes: 13h03m, not 13h3m", () => {
   assertStringIncludes(at((13 * 60 + 3) * 60e3), " 13h03m");
   assertStringIncludes(at(2 * 3600e3), " 2h00m");
   assertStringIncludes(at(3 * 60e3), " 3m");
+});
+
+Deno.test("calm chips: readable on every look, and never closer to the dark terminal than their segment", () => {
+  const TERMINAL = "#1d2021";
+  for (const p of allPresets()) {
+    for (const [slot, seg] of p.bar.lines[2].entries()) {
+      const chip = calmChip(seg);
+      const where = `${p.id} slot ${slot}`;
+      assert(contrast(seg.fg, chip) >= 3, `${where}: text ${contrast(seg.fg, chip).toFixed(2)}`);
+      assert(
+        contrast(chip, TERMINAL) >= Math.min(contrast(seg.bg, TERMINAL), 1.75),
+        `${where}: chip ${contrast(chip, TERMINAL).toFixed(2)} vs segment ${
+          contrast(seg.bg, TERMINAL).toFixed(2)
+        }`,
+      );
+    }
+  }
+});
+
+Deno.test("calm chips: a deeper shade where the light one faded the text, today's shade on dark segments", () => {
+  const seg = (id: string, slot: number) => findPreset(id)!.bar.lines[2][slot];
+  assertEquals(calmChip(seg("sunset", 1)), "#933f54", "Sunset 5h: was #da7a91, text 2.78:1");
+  assertEquals(
+    calmChip(seg("rainbow", 0)),
+    mix(seg("rainbow", 0).bg, seg("rainbow", 0).fg, 0.2),
+    "Rainbow CTX unchanged",
+  );
 });

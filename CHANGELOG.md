@@ -1,9 +1,17 @@
 # Changelog
 
 Each release lists what people can see or do. `cc-starship --version` prints the exact build:
-`cc-starship 1.3.2 (52 · 1a2b3c4) release · macOS 27.3 arm64` (version, build number, commit).
+`cc-starship 1.3.3 (52 · 1a2b3c4) release · macOS 27.3 arm64` (version, build number, commit).
 
-## 1.3.2 (not released yet: on the owner's machine for a trial)
+## 1.3.3 (not released yet: on the owner's machine for a trial)
+
+- Calm chips (below 70%) are easier to read where they had faded the number: on Sunset, Autumn, Tidepool and
+  Jewel's 5-hour segment the chip is now a deeper shade of the segment (Sunset: 2.8:1 → 6.5:1), and light
+  segments get a lighter chip under their dark text. Dark segments keep the same look, so no chip comes near
+  the terminal background. Chosen from three options by a blind panel of three model families (Qwen, Gemma,
+  GPT-4o). Tested on all 15 looks.
+
+## 1.3.2 (not released yet)
 
 Fixes from a code review of everything since 1.1.0:
 
