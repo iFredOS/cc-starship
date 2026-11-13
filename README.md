@@ -147,7 +147,8 @@ status bar each time it refreshes.
 **Several Claude accounts** (one `CLAUDE_CONFIG_DIR` each): limits are per account, so each
 account's numbers are saved in their own file in the install folder: `usage` for the stock
 `~/.claude`, `usage-<name>` for `~/.claude-<name>`, `usage-<8 hex>` for any other folder. The
-prompt and *Usage for Claude* read the file of the account they run under.
+prompt and *Usage for Claude* read the file of the account they run under; a shell that has no
+`CLAUDE_CONFIG_DIR` and no file of its own (you only use a profile) shows the most recently updated account.
 
 ## Add-ons
 

@@ -1,7 +1,7 @@
 // Where things live on macOS and Windows. HOME / USERPROFILE and
 // CC_STARSHIP_HOME can be pointed elsewhere, which the tests use.
 import { createHash } from "node:crypto";
-import { basename, join } from "node:path";
+import { join, posix, win32 } from "node:path";
 
 export const isWindows = Deno.build.os === "windows";
 
@@ -61,27 +61,86 @@ export const paths = {
  * The account a Claude config dir belongs to: "main" for the stock ~/.claude (or none set), <name> for
  * ~/.claude-<name> (the names cca gives its profiles), else the first 8 hex of the path's sha256.
  */
-export function accountName(configDir: string | undefined, homeDir: string): string {
-  const dir = (configDir ?? "").replace(/[\\/]+$/, "");
-  if (isStockAccount(configDir, homeDir)) return "main";
-  const name = basename(dir);
-  if (name.startsWith(".claude-") && name.length > ".claude-".length) return name.slice(".claude-".length);
-  return createHash("sha256").update(dir).digest("hex").slice(0, 8);
+export function accountName(
+  configDir: string | undefined,
+  homeDir: string,
+  r: PathRules = HOST_RULES,
+): string {
+  if (!configDir || isStockAccount(configDir, homeDir, r)) return "main";
+  const dir = r.path.normalize(configDir).replace(/[\\/]+$/, "");
+  const name = r.path.basename(dir);
+  const inHome = folderKey(r.path.dirname(dir), r) === folderKey(homeDir, r);
+  if (inHome && name.startsWith(".claude-") && name.length > ".claude-".length) {
+    return name.slice(".claude-".length);
+  }
+  return createHash("sha256").update(folderKey(configDir, r)).digest("hex").slice(0, 8);
 }
 
 /**
  * Where an account's 5h/7d usage is saved. Limits are per account, so each gets its own file; with one shared
  * file the last account to draw its bar overwrote the others. Main keeps the original name, "usage".
  */
-export function usageFile(dir: string, configDir: string | undefined, homeDir: string): string {
+export function usageFile(
+  dir: string,
+  configDir: string | undefined,
+  homeDir: string,
+  r: PathRules = HOST_RULES,
+): string {
   // Asked of the folder, not the name: a profile called ~/.claude-main is "main" too.
-  return join(dir, isStockAccount(configDir, homeDir) ? "usage" : `usage-${accountName(configDir, homeDir)}`);
+  return join(
+    dir,
+    isStockAccount(configDir, homeDir, r) ? "usage" : `usage-${accountName(configDir, homeDir, r)}`,
+  );
+}
+
+/**
+ * The usage file the shell prompt shows. The prompt's shell rarely has Claude Code's CLAUDE_CONFIG_DIR, so for
+ * someone who only uses a profile its own file never exists: then the most recently written account's file (what
+ * 1.1 showed). Only when its own is missing: someone with main and a profile keeps seeing main's numbers.
+ */
+export function promptUsageFile(dir: string, configDir: string | undefined, homeDir: string): string {
+  const own = usageFile(dir, configDir, homeDir);
+  try {
+    Deno.statSync(own);
+    return own;
+  } catch {
+    // fall through to the newest account's file
+  }
+  let newest: { path: string; at: number } | null = null;
+  try {
+    for (const e of Deno.readDirSync(dir)) {
+      if (!e.isFile || !/^usage(-.+)?$/.test(e.name)) continue;
+      const path = join(dir, e.name);
+      const at = Deno.statSync(path).mtime?.getTime() ?? 0;
+      if (!newest || at > newest.at) newest = { path, at };
+    }
+  } catch {
+    // no install folder yet
+  }
+  return newest?.path ?? own;
 }
 
 /** No CLAUDE_CONFIG_DIR, or the stock ~/.claude. */
-function isStockAccount(configDir: string | undefined, homeDir: string): boolean {
-  const dir = (configDir ?? "").replace(/[\\/]+$/, "");
-  return !dir || dir === join(homeDir, ".claude");
+function isStockAccount(configDir: string | undefined, homeDir: string, r: PathRules = HOST_RULES): boolean {
+  return !configDir || folderKey(configDir, r) === folderKey(r.path.join(homeDir, ".claude"), r);
+}
+
+/** How paths are spelled and compared: this system's by default; the tests also use Windows' on a Mac. */
+export interface PathRules {
+  path: typeof posix;
+  /** The disk ignores case (APFS and NTFS by default). */
+  caseless: boolean;
+}
+
+const HOST_RULES: PathRules = {
+  path: isWindows ? win32 : posix,
+  caseless: isWindows || Deno.build.os === "darwin",
+};
+
+/** A folder as one comparable key: separators, `.`, doubled and trailing ones folded; case too where ignored. */
+function folderKey(dir: string, r: PathRules): string {
+  const key = r.path.normalize(dir).replace(/[\\/]+$/, "");
+  return r.caseless ? key.toLowerCase() : key;
 }
 
 export interface State {

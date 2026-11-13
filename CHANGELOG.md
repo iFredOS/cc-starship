@@ -1,9 +1,23 @@
 # Changelog
 
 Each release lists what people can see or do. `cc-starship --version` prints the exact build:
-`cc-starship 1.3.1 (52 · 1a2b3c4) release · macOS 27.3 arm64` (version, build number, commit).
+`cc-starship 1.3.2 (52 · 1a2b3c4) release · macOS 27.3 arm64` (version, build number, commit).
 
-## 1.3.1 (not released yet: on the owner's machine for a trial)
+## 1.3.2 (not released yet: on the owner's machine for a trial)
+
+Fixes from a code review of everything since 1.1.0:
+
+- The shell prompt shows usage again for someone who uses only a second-account profile: the prompt's shell
+  rarely has Claude Code's `CLAUDE_CONFIG_DIR`, so it found no file of its own. It now falls back to the most
+  recently updated account's file, only when its own is missing (main and a profile: the prompt keeps main's).
+  Left as is: a profile-only user upgrading from 1.1 keeps an old `usage` file, which the prompt shows until
+  its windows reset (then 0%); deleting it fixes that.
+- Other spellings of `~/.claude` count as the main account (`C:/Users/…`, other capitals, `//`, `/./`), and a
+  `.claude-<name>` folder outside the home folder gets its own file instead of sharing `usage-<name>`.
+- `--version` reports the build even when the binary was renamed.
+- Tests: the panel preview's usage file per account.
+
+## 1.3.1 (not released yet)
 
 - The session time pads its minutes: `13h03m`, not `13h3m` (1.3.0 had dropped the space without padding).
   Every reset time (4 formats × 1,440 minutes) and session length up to 48 h checked.
@@ -25,7 +39,7 @@ Each release lists what people can see or do. `cc-starship --version` prints the
 ## 1.2.0 (withdrawn)
 
 Published 2026-11-03 and deleted the same day: its warning chips had not been checked on every look, and on
-some they read as a hole in the bar. Copies that updated to it are offered 1.3.0.
+some they read as a hole in the bar. Copies that updated to it are offered the next release.
 
 ## 1.1.1 (tagged, never released)
 

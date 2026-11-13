@@ -30,7 +30,7 @@ import {
 } from "./fonts.ts";
 import { HOOK_COST, hookOutput, pruneSnapshots, snapshotFile } from "./hook.ts";
 import { ompNotes } from "./omp.ts";
-import { paths, readState } from "./paths.ts";
+import { home, installDir, paths, promptUsageFile, readState } from "./paths.ts";
 import { allPresets, DEFAULT_PRESET, findPreset } from "./presets.ts";
 import {
   findStarship,
@@ -274,7 +274,12 @@ export async function main(args: string[]): Promise<number> {
       return 0;
     }
     case "usage":
-      await Deno.stdout.write(new TextEncoder().encode(usageText(paths.usage())));
+      // The prompt's shell rarely has Claude Code's CLAUDE_CONFIG_DIR: see promptUsageFile.
+      await Deno.stdout.write(
+        new TextEncoder().encode(
+          usageText(promptUsageFile(installDir(), Deno.env.get("CLAUDE_CONFIG_DIR"), home())),
+        ),
+      );
       return 0;
     case "install": {
       const preset = flag(args, "--preset") ?? readState()?.theme ?? DEFAULT_PRESET;

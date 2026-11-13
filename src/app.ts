@@ -101,6 +101,12 @@ export async function doInstall(
 
 type PreviewPrefs = { language: Language; clock: Clock };
 
+/**
+ * Where a preview's sample bar saves its usage: the file the preview prompt's `cc-starship usage` reads, since it
+ * runs under the same account (it inherits CLAUDE_CONFIG_DIR; only CC_STARSHIP_HOME points at `dir`).
+ */
+export const previewUsageFile = (dir: string) => usageFile(dir, Deno.env.get("CLAUDE_CONFIG_DIR"), home());
+
 /** The two Starship runs of a preview (status bar, shell prompt), set up in a temporary folder. */
 /** The two Starship runs of a preview, set up in `dir` (a fresh folder the caller removes). */
 function previewCommands(
@@ -122,8 +128,7 @@ function previewCommands(
     configPath: bar,
     starship,
     accountEmail: "you@example.com",
-    // The file the prompt's `cc-starship usage` will read: it runs under this account too.
-    usageFile: usageFile(dir, Deno.env.get("CLAUDE_CONFIG_DIR"), home()),
+    usageFile: previewUsageFile(dir),
     prefs,
     git,
   });

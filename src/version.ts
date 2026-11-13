@@ -1,9 +1,8 @@
 // Which build this is: the version (set here, the one place), plus the build number, commit and
 // commit date that `deno task build` writes to dist/build.json and embeds in the binary.
 // Shown by --version as one line for bug reports: cc-starship 1.3.0 (176 · fae1f44) release · macOS 27.3 arm64
-import { basename } from "node:path";
 
-export const VERSION = "1.3.1";
+export const VERSION = "1.3.2";
 
 export interface BuildInfo {
   version: string;
@@ -72,6 +71,5 @@ export function currentHost(): Host {
   return { os: Deno.build.os === "windows" ? "Windows" : Deno.build.os, osVersion: Deno.osRelease(), arch };
 }
 
-/** A built binary (`deno compile`) rather than `deno run` from source. */
-export const releaseKind = (): "release" | "dev" =>
-  basename(Deno.execPath()).startsWith("cc-starship") ? "release" : "dev";
+/** A built binary (`deno compile`), whatever its file is called, rather than `deno run` from source. */
+export const releaseKind = (): "release" | "dev" => (Deno.build.standalone ? "release" : "dev");
