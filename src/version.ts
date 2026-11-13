@@ -3,7 +3,7 @@
 // Shown by --version as one line for bug reports: cc-starship 1.3.0 (176 · fae1f44) release · macOS 27.3 arm64
 import { basename } from "node:path";
 
-export const VERSION = "1.3.0";
+export const VERSION = "1.3.1";
 
 export interface BuildInfo {
   version: string;

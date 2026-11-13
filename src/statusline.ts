@@ -86,7 +86,7 @@ function formatDuration(ms: number): string {
   const s = Math.floor(ms / 1e3);
   const h = Math.floor(s / 3600);
   const m = Math.floor((s % 3600) / 60);
-  if (h > 0) return `${h}h${m}m`;
+  if (h > 0) return `${h}h${String(m).padStart(2, "0")}m`; // 13h03m: tight, but never ambiguous
   if (m > 0) return `${m}m`;
   return `${s}s`;
 }

@@ -1,9 +1,14 @@
 # Changelog
 
 Each release lists what people can see or do. `cc-starship --version` prints the exact build:
-`cc-starship 1.3.0 (52 · 1a2b3c4) release · macOS 27.3 arm64` (version, build number, commit).
+`cc-starship 1.3.1 (52 · 1a2b3c4) release · macOS 27.3 arm64` (version, build number, commit).
 
-## 1.3.0 (not released yet: on the owner's machine for a trial)
+## 1.3.1 (not released yet: on the owner's machine for a trial)
+
+- The session time pads its minutes: `13h03m`, not `13h3m` (1.3.0 had dropped the space without padding).
+  Every reset time (4 formats × 1,440 minutes) and session length up to 48 h checked.
+
+## 1.3.0 (not released yet)
 
 - Every percentage is a chip with powerline arrows at both ends: a calm shade of its segment below 70%, amber
   from 70%, red with ▲ from 90%. Where amber or red would nearly match the segment, the chip is a deep shade

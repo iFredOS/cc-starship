@@ -338,3 +338,15 @@ Deno.test("a spent 5-hour window keeps its · before the reset time (no chip the
   );
   assertStringIncludes(out, "\uf071 Extra · ");
 });
+
+Deno.test("session time pads its minutes: 13h03m, not 13h3m", () => {
+  const at = (ms: number) =>
+    plain(
+      payload({
+        cost: { total_cost_usd: 1, total_lines_added: 1, total_lines_removed: 0, total_duration_ms: ms },
+      }),
+    );
+  assertStringIncludes(at((13 * 60 + 3) * 60e3), " 13h03m");
+  assertStringIncludes(at(2 * 3600e3), " 2h00m");
+  assertStringIncludes(at(3 * 60e3), " 3m");
+});
