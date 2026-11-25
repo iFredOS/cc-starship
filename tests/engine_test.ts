@@ -21,6 +21,14 @@ const sha = (path: string) => {
   }
 };
 
+/** `path`'s text without the PATH block, which every install adds (see "the cc-starship command" tests). */
+const withoutPath = (path: string) =>
+  Deno.readTextFileSync(path).replace(
+    /# >>> cc-starship path >>>\r?\n.*\r?\n# <<< cc-starship path <<<\r?\n/,
+    "",
+  );
+const shaWithoutPath = (path: string) => createHash("sha256").update(withoutPath(path)).digest("hex");
+
 /** A throwaway home with the env pointed at it; returns its paths. */
 function sandbox() {
   const home = tempDir();
@@ -61,7 +69,7 @@ function sandbox() {
 
 const opts = (s: ReturnType<typeof sandbox>) => ({
   starship: "/usr/local/bin/starship",
-  bin: join(s.installDir, "bin", "x"),
+  bin: join(s.installDir, "bin", "cc-starship"),
 });
 
 Deno.test("install, switch theme, uninstall: existing files come back byte-identical", async () => {
@@ -124,7 +132,7 @@ Deno.test("a symlinked starship.toml comes back as the same symlink", async () =
   }
 });
 
-Deno.test("a profile that already starts Starship is left alone", async () => {
+Deno.test("a profile that already starts Starship gets no second start", async () => {
   const s = sandbox();
   try {
     Deno.writeTextFileSync(s.zshrc, 'eval "$(starship init zsh)"\n');
@@ -133,7 +141,7 @@ Deno.test("a profile that already starts Starship is left alone", async () => {
       ...opts(s),
       components: { ...ALL_COMPONENTS, memory: false, terminal: false },
     });
-    assertEquals(sha(s.zshrc), before);
+    assertEquals(shaWithoutPath(s.zshrc), before);
     await uninstall();
     assertEquals(sha(s.zshrc), before);
   } finally {
@@ -224,7 +232,7 @@ Deno.test("components: bar only leaves the shell alone; toggling restores each p
       components: { bar: true, shell: false, usage: false, hook: false, memory: false, terminal: false },
     });
     assertEquals(sha(s.starship), starship0, "shell prompt untouched");
-    assertEquals(sha(s.zshrc), zshrc0, "profile untouched");
+    assertEquals(shaWithoutPath(s.zshrc), zshrc0, "profile untouched but for the cc-starship command");
     assertStringIncludes(Deno.readTextFileSync(s.settings), "statusline");
 
     await setComponents({ bar: true, shell: true, usage: true, hook: false, memory: false, terminal: false });
@@ -341,7 +349,7 @@ Deno.test("shell prompt off means the shell's own prompt, even if the profile st
     Deno.writeTextFileSync(s.zshrc, 'export A=1\neval "$(starship init zsh)"\n');
     const before = sha(s.zshrc);
     await install("rainbow", { ...opts(s), components: { ...ALL_COMPONENTS, memory: false } });
-    assertEquals(sha(s.zshrc), before, "on: the profile's own Starship line is enough");
+    assertEquals(shaWithoutPath(s.zshrc), before, "on: the profile's own Starship line is enough");
     await setComponents({ ...ALL_COMPONENTS, shell: false, usage: false, memory: false });
     const off = Deno.readTextFileSync(s.zshrc);
     assertStringIncludes(off, "# >>> cc-starship prompt off >>>");
@@ -359,7 +367,7 @@ Deno.test("shell prompt off means the shell's own prompt, even if the profile st
     assertEquals(prompt, "%n@%m %1~ %# ");
     assert(!hooks.includes("starship"), hooks);
     await setComponents({ ...ALL_COMPONENTS, memory: false });
-    assertEquals(sha(s.zshrc), before, "on again: the off block is gone");
+    assertEquals(shaWithoutPath(s.zshrc), before, "on again: the off block is gone");
     await setComponents({ ...ALL_COMPONENTS, shell: false, usage: false, memory: false });
     await uninstall();
     assertEquals(sha(s.zshrc), before, "uninstall: exactly as before");
@@ -568,8 +576,11 @@ Deno.test("profile without a final newline: blocks removed in any order leave va
     await install("rainbow", { ...opts(s), components: { ...ALL_COMPONENTS, terminal: false } });
     await setComponents({ ...ALL_COMPONENTS, shell: false, usage: false, terminal: false });
     const text = Deno.readTextFileSync(s.zshrc);
-    assert(text.startsWith("export A=1\n# >>> cc-starship memory >>>"), JSON.stringify(text.slice(0, 50)));
+    assert(text.startsWith("export A=1\n# >>> cc-starship path >>>"), JSON.stringify(text.slice(0, 50)));
+    assertStringIncludes(text, "\n# >>> cc-starship memory >>>");
     await setComponents({ ...ALL_COMPONENTS, shell: false, usage: false, memory: false, terminal: false });
+    assert(!Deno.readTextFileSync(s.zshrc).includes("memory >>>"));
+    await uninstall();
     assertEquals(sha(s.zshrc), before);
   } finally {
     s.restore();
@@ -613,8 +624,11 @@ Deno.test("commands are quoted only when the path has spaces (PowerShell can't r
   try {
     await install("rainbow", opts(s));
     const data = JSON.parse(Deno.readTextFileSync(s.settings));
-    assertEquals(data.statusLine.command, `${join(s.installDir, "bin", "x")} statusline`);
-    assertEquals(data.hooks.UserPromptSubmit[0].hooks[0].command, `${join(s.installDir, "bin", "x")} hook`);
+    assertEquals(data.statusLine.command, `${join(s.installDir, "bin", "cc-starship")} statusline`);
+    assertEquals(
+      data.hooks.UserPromptSubmit[0].hooks[0].command,
+      `${join(s.installDir, "bin", "cc-starship")} hook`,
+    );
     await install("rainbow", { ...opts(s), bin: join(s.home, "my apps", "x") });
     const spaced = JSON.parse(Deno.readTextFileSync(s.settings));
     assertEquals(spaced.statusLine.command, `"${join(s.home, "my apps", "x")}" statusline`);
@@ -902,7 +916,9 @@ Deno.test("PowerShell, prompt off, memory on: the plain prompt still saves the l
     assertStringIncludes(text, "cc-starship memory >>>");
     assertStringIncludes(text, "cc-starship prompt off >>>", "a prompt that calls the folder saver");
     await setComponents({ ...off, memory: false });
-    assertEquals(Deno.readTextFileSync(ps1), original, "neither block needed any more");
+    assertEquals(withoutPath(ps1), original, "neither block needed any more");
+    await uninstall();
+    assertEquals(Deno.readTextFileSync(ps1), original);
   } finally {
     s.restore();
   }
@@ -1045,6 +1061,82 @@ Deno.test("switching memory off, or uninstalling, points to the PowerShell histo
     assert(sha(kept) !== "missing", "your history stays");
   } finally {
     appData === undefined ? Deno.env.delete("APPDATA") : Deno.env.set("APPDATA", appData);
+    s.restore();
+  }
+});
+
+const NONE = { bar: false, shell: false, usage: false, hook: false, memory: false, terminal: false };
+
+/** PATH as a real shell sees it after reading `profile` twice (a nested shell, a re-sourced profile). */
+function pathAfter(shell: "zsh" | "bash", profile: string, home: string): string {
+  const out = new Deno.Command(shell, {
+    args: ["-c", `PATH=/usr/bin:/bin; source "$1"; source "$1"; printf %s "$PATH"`, shell, profile],
+    env: { HOME: home },
+    clearEnv: true,
+    stdout: "piped",
+    stderr: "null",
+  }).outputSync();
+  return new TextDecoder().decode(out.stdout);
+}
+
+Deno.test("the cc-starship command: its folder joins PATH in new shells, once, after yours", async () => {
+  const s = sandbox();
+  try {
+    Deno.writeTextFileSync(s.zshrc, "export A=1\n");
+    const before = sha(s.zshrc);
+    const bin = join(s.home, "it's here", "bin", "cc-starship"); // a space and a quote
+    await install("rainbow", { ...opts(s), bin, components: NONE });
+    const text = Deno.readTextFileSync(s.zshrc);
+    assertStringIncludes(text, "# >>> cc-starship path >>>");
+    assertEquals(pathAfter("zsh", s.zshrc, s.home), `/usr/bin:/bin:${join(s.home, "it's here", "bin")}`);
+    await install("rainbow", { ...opts(s), bin, components: NONE });
+    assertEquals(Deno.readTextFileSync(s.zshrc), text, "installing again adds nothing");
+    await uninstall();
+    assertEquals(sha(s.zshrc), before, "uninstall: exactly as before");
+  } finally {
+    s.restore();
+  }
+});
+
+Deno.test("the cc-starship command: bash profiles get the same block", async () => {
+  const s = sandbox();
+  try {
+    const bashrc = join(s.home, ".bashrc");
+    Deno.env.set("CC_STARSHIP_PROFILES", bashrc);
+    await install("rainbow", { ...opts(s), components: NONE });
+    assertEquals(pathAfter("bash", bashrc, s.home), `/usr/bin:/bin:${join(s.installDir, "bin")}`);
+    await uninstall();
+    assert(!sha(bashrc).match(/^[0-9a-f]+$/), "a profile created for the block is removed with it");
+  } finally {
+    s.restore();
+  }
+});
+
+Deno.test("the cc-starship command: PowerShell profiles add the folder once, removed exactly", async () => {
+  const s = sandbox();
+  try {
+    const ps1 = join(s.home, "profile.ps1");
+    const original = "Set-Alias ll Get-ChildItem\r\n";
+    Deno.writeTextFileSync(ps1, original);
+    Deno.env.set("CC_STARSHIP_PROFILES", ps1);
+    await install("rainbow", { ...opts(s), components: NONE });
+    const text = Deno.readTextFileSync(ps1);
+    assertStringIncludes(text, "# >>> cc-starship path >>>\r\n");
+    assertStringIncludes(text, `-notcontains '${join(s.installDir, "bin")}'`);
+    await uninstall();
+    assertEquals(Deno.readTextFileSync(ps1), original);
+  } finally {
+    s.restore();
+  }
+});
+
+Deno.test("the cc-starship command: a run from source (bin is deno itself) adds no PATH block", async () => {
+  const s = sandbox();
+  try {
+    Deno.writeTextFileSync(s.zshrc, "export A=1\n");
+    await install("rainbow", { ...opts(s), bin: join(s.home, ".deno", "bin", "deno"), components: NONE });
+    assertEquals(Deno.readTextFileSync(s.zshrc), "export A=1\n");
+  } finally {
     s.restore();
   }
 });

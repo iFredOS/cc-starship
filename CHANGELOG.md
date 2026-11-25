@@ -3,6 +3,16 @@
 Each release lists what people can see or do. `cc-starship --version` prints the exact build:
 `cc-starship 1.3.3 (52 · 1a2b3c4) release · macOS 27.3 arm64` (version, build number, commit).
 
+## 1.4.0 (2026-11-25)
+
+- **`cc-starship` works in new terminal tabs**, without its full path: install adds the program's folder to
+  PATH in each shell profile it sets up (zsh, bash, PowerShell), in a block of its own that uninstall removes.
+  It goes at the end of PATH, so it never hides a command of yours (a Starship you install yourself stays
+  first). It is added whatever parts are switched on; updating an existing install adds it too.
+- On Windows, this block counts as a reason to let Windows PowerShell run your profile: an account that blocks
+  scripts gets `RemoteSigned` (put back on uninstall), as it already did with the shell prompt or memory on.
+- cmd.exe and Git Bash don't read these profiles, so they still need the full path.
+
 ## 1.3.6 (2026-11-25)
 
 Fixes from a code review of 1.3.4 and 1.3.5:

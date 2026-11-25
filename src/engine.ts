@@ -24,6 +24,8 @@ const MEMORY_START = "# >>> cc-starship memory >>>";
 const MEMORY_END = "# <<< cc-starship memory <<<";
 const PROMPT_OFF_START = "# >>> cc-starship prompt off >>>";
 const PROMPT_OFF_END = "# <<< cc-starship prompt off <<<";
+const PATH_START = "# >>> cc-starship path >>>";
+const PATH_END = "# <<< cc-starship path <<<";
 const TERMINAL_START = "# >>> cc-starship terminal >>>";
 const TERMINAL_END = "# <<< cc-starship terminal <<<";
 
@@ -54,6 +56,8 @@ interface Manifest {
   starshipConfig?: FileEntry;
   settings?: SettingsEntry;
   profiles: ProfileEntry[];
+  /** Blocks putting the installed binary's folder on PATH, one per profile. */
+  path?: ProfileEntry[];
   /** Shell memory blocks, one per profile. */
   memory?: ProfileEntry[];
   /** With the shell prompt off: blocks restoring the shell's own prompt where the profile starts Starship. */
@@ -258,7 +262,7 @@ function hookProfile(profile: string, starship: string, ours: boolean): ProfileE
 
 /** Profiles the installer created, by any component. */
 const createdByUs = (m: Manifest, path: string) =>
-  [...m.profiles, ...(m.memory ?? [])].some((e) => e.path === path && e.created);
+  [...m.profiles, ...(m.path ?? []), ...(m.memory ?? [])].some((e) => e.path === path && e.created);
 
 /** Removes `entry`'s block; `all` are the other blocks, which may need the line break it carried. */
 function unhookProfile(entry: ProfileEntry, all: ProfileEntry[]): string {
@@ -284,6 +288,7 @@ function unhookProfile(entry: ProfileEntry, all: ProfileEntry[]): string {
 
 const allBlocks = (m: Manifest) => [
   ...m.profiles,
+  ...(m.path ?? []),
   ...(m.memory ?? []),
   ...(m.promptOff ?? []),
   ...(m.terminal ?? []),
@@ -458,6 +463,41 @@ function blockReport(result: ReturnType<typeof ensureBlock>, file: string, what:
   if (result === "same") return [];
   if (result === "edited") return [`${file}: you edited the cc-starship block, so it was left as is`];
   return [`${file}: ${what}`];
+}
+
+/**
+ * The line adding `dir` to PATH, unless it is there already. At the end: Starship may be downloaded into the same
+ * folder, and must not hide one installed later.
+ */
+function pathLine(profile: string, dir: string): string {
+  if (extname(profile).toLowerCase() === ".ps1") {
+    const d = psQuote(dir);
+    return `if (($env:PATH -split ';') -notcontains ${d}) { $env:PATH = $env:PATH + ';' + ${d} }`;
+  }
+  const d = zshQuote(dir);
+  return `case ":$PATH:" in *:${d}:*) ;; *) export PATH="$PATH:"${d} ;; esac`;
+}
+
+/**
+ * Every profile gets the cc-starship command, whatever is switched on: it is how the tool is used. Not for a run
+ * from source, whose bin is deno itself.
+ */
+function addPath(state: InstalledState, manifest: Manifest, report: string[]): void {
+  manifest.path ??= [];
+  if (!basename(state.bin).toLowerCase().startsWith("cc-starship")) return;
+  const dir = dirname(state.bin);
+  for (const profile of shellProfiles(state)) {
+    const result = ensureBlock(manifest, manifest.path, profile, [pathLine(profile, dir)], [
+      PATH_START,
+      PATH_END,
+    ]);
+    report.push(...blockReport(result, profile, `the cc-starship command works in new tabs (${dir})`));
+  }
+}
+
+function removePath(manifest: Manifest, report: string[]): void {
+  for (const entry of manifest.path ?? []) report.push(unhookProfile(entry, allBlocks(manifest)));
+  delete manifest.path;
 }
 
 function addMemory(state: InstalledState, manifest: Manifest, report: string[]): void {
@@ -774,6 +814,7 @@ function apply(state: InstalledState, manifest: Manifest, report: string[]): voi
   }
   writeText(paths.barConfig(), barConfig(p));
   writeText(paths.state(), JSON.stringify(state, null, 2) + "\n");
+  addPath(state, manifest, report);
   if (state.components.shell) {
     removePromptOff(manifest, report);
     addShell(p, state, manifest, report);
@@ -868,6 +909,7 @@ export async function uninstall(): Promise<string[]> {
   removePromptOff(manifest, report);
   removeMemory(manifest, report);
   removeShell(manifest, report);
+  removePath(manifest, report);
   removeSettings(manifest, report, readInstalled()?.bin);
   restoreProfileScripts(manifest, report);
   // Their record is in the install folder: after this, nothing could remove them any more.
