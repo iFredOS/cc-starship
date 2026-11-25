@@ -21,6 +21,7 @@ export function bar(
     columns?: number;
     email?: string;
     usageFile?: string;
+    snapshotFile?: string;
     prefs?: BarOptions["prefs"];
     git?: BarOptions["git"];
   } = {},
@@ -36,6 +37,7 @@ export function barWith(
     columns?: number;
     email?: string;
     usageFile?: string;
+    snapshotFile?: string;
     prefs?: BarOptions["prefs"];
     git?: BarOptions["git"];
   } = {},
@@ -51,6 +53,7 @@ export function barWith(
       columns: opts.columns,
       accountEmail: opts.email ?? "you@example.com",
       usageFile: opts.usageFile ?? join(dir, "usage"),
+      snapshotFile: opts.snapshotFile,
       prefs: opts.prefs,
       git: opts.git,
     });

@@ -384,3 +384,25 @@ Deno.test("bar saves the 7d for the prompt even when Claude Code sends no 5h win
   bar({ ...fixture, rate_limits: { seven_day: { used_percentage: 6, resets_at: reset } } }, { usageFile });
   assertEquals(Deno.readTextFileSync(usageFile), `0 - ${reset} 6\n`);
 });
+
+Deno.test("an idle session redrawing old numbers doesn't overwrite newer ones in the shared file", () => {
+  const dir = tempDir();
+  const usageFile = join(dir, "usage");
+  const snapshotFile = join(dir, "sessions", "old.json");
+  const reset = now() + 86400;
+  const at = (pct: number) => ({
+    ...fixture,
+    rate_limits: { seven_day: { used_percentage: pct, resets_at: reset } },
+  });
+  bar(at(96), { usageFile, snapshotFile });
+  assertEquals(Deno.readTextFileSync(usageFile), `0 - ${reset} 96\n`, "first draw of a session saves");
+  Deno.writeTextFileSync(usageFile, `0 - ${reset} 6\n`); // a newer session's numbers
+  bar(at(96), { usageFile, snapshotFile });
+  assertEquals(
+    Deno.readTextFileSync(usageFile),
+    `0 - ${reset} 6\n`,
+    "same numbers again: a redraw, not news",
+  );
+  bar(at(97), { usageFile, snapshotFile });
+  assertEquals(Deno.readTextFileSync(usageFile), `0 - ${reset} 97\n`, "numbers changed: a new answer, saved");
+});

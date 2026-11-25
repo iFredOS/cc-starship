@@ -35,6 +35,18 @@ export function snapshotFile(dir: string, sessionId: string): string {
 const window = (w?: Json): Window | undefined =>
   w?.used_percentage == null ? undefined : { pct: w.used_percentage, resetsAt: w.resets_at ?? 0 };
 
+/**
+ * Whether this payload's 5h/7d differ from what this session saved last. Every session redraws its bar with the
+ * numbers of its own last request, so an idle one repeats old numbers; only a change is a new answer.
+ */
+export function limitsChanged(file: string, j: Json): boolean {
+  const last = readJson(file);
+  if (!last) return true;
+  const same = (a?: Window, b?: Window) => a?.pct === b?.pct && a?.resetsAt === b?.resetsAt;
+  return !same(last.fiveHour, window(j.rate_limits?.five_hour)) ||
+    !same(last.sevenDay, window(j.rate_limits?.seven_day));
+}
+
 /** Saves what the status bar shows for this session (run by the bar on every refresh). */
 export function saveSnapshot(file: string, j: Json, now = new Date()): void {
   const ctx = j.context_window;

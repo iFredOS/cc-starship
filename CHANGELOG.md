@@ -3,6 +3,13 @@
 Each release lists what people can see or do. `cc-starship --version` prints the exact build:
 `cc-starship 1.3.3 (52 · 1a2b3c4) release · macOS 27.3 arm64` (version, build number, commit).
 
+## 1.3.5 (2026-11-25)
+
+- The shell prompt and _Usage for Claude_ no longer jump back to old numbers. Every Claude Code session
+  redraws its bar about once a minute with the numbers of its own last request, so a session left idle since
+  yesterday kept putting back yesterday's 7-day figure (seen after the Ultra change: 86–96 % while active
+  sessions said 6 %). A session now saves the shared numbers only when they changed since its last draw.
+
 ## 1.3.4 (2026-11-25)
 
 - The shell prompt, `cc-starship usage` and _Usage for Claude_ follow plans with no 5-hour limit (Ultra,

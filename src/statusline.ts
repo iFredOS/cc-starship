@@ -5,7 +5,7 @@ import { usageLine } from "./usage.ts";
 import { mkdirSync, renameSync, writeFileSync } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
 import { bg, contrast, fg, mix } from "./color.ts";
-import { saveSnapshot } from "./hook.ts";
+import { limitsChanged, saveSnapshot } from "./hook.ts";
 import { home } from "./paths.ts";
 import type { Preset } from "./presets.ts";
 import { type Clock, DEFAULT_PREFS, formatWhen, type Language, resolvePrefs } from "./when.ts";
@@ -308,7 +308,10 @@ export function buildBar(j: Json, opts: BarOptions): { dir: string; vars: Record
   const withOthers = branch && others > 0 ? `${branch} · ${ICON.worktree} ${others} more` : branch;
   // Claude Code sets COLUMNS; keep a margin for the bar's own indent.
   const budget = (opts.columns ?? Infinity) - 2;
-  if (opts.usageFile) saveUsage(opts.usageFile, fiveHour, sevenDay);
+  // An idle session redraws its last numbers: saving those would put back what a newer session replaced.
+  if (opts.usageFile && (!opts.snapshotFile || limitsChanged(opts.snapshotFile, j))) {
+    saveUsage(opts.usageFile, fiveHour, sevenDay);
+  }
   if (opts.snapshotFile) saveSnapshot(opts.snapshotFile, j);
   const prefs = opts.prefs ?? resolvePrefs(DEFAULT_PREFS);
 
