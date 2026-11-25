@@ -12,6 +12,10 @@ Each release lists what people can see or do. `cc-starship --version` prints the
 - On Windows, this block counts as a reason to let Windows PowerShell run your profile: an account that blocks
   scripts gets `RemoteSigned` (put back on uninstall), as it already did with the shell prompt or memory on.
 - cmd.exe and Git Bash don't read these profiles, so they still need the full path.
+- **Shell memory (zsh): a command typed with a leading space is not yours.** zsh already kept it out of
+  history; now a `cd` in it doesn't move the folder new tabs open in either. Agents that type commands into
+  terminal tabs (a `cd … && claude` launch, a `while true` watch loop) filled both, so new tabs opened in an
+  agent's folder. They start such commands with a space now.
 
 ## 1.3.6 (2026-11-25)
 

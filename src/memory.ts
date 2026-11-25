@@ -1,6 +1,7 @@
 // Shell memory: new tabs open in the last folder a person cd'd into, and history
 // keeps one copy of each command (the newest). Shells run by agents (CLAUDECODE
-// set) neither move the remembered folder nor get moved by it.
+// set) neither move the remembered folder nor get moved by it; nor does a zsh command
+// typed with a leading space (how agents start commands in terminal tabs).
 
 export type ShellKind = "zsh" | "powershell";
 
@@ -15,11 +16,16 @@ function zsh(lastdir: string): string[] {
     "(( SAVEHIST < 100000 )) && SAVEHIST=100000",
     "setopt HIST_IGNORE_ALL_DUPS HIST_SAVE_NO_DUPS HIST_IGNORE_SPACE INC_APPEND_HISTORY",
     `__ssl_lastdir=${zshQuote(lastdir)}`,
+    "# A command typed with a leading space (an agent's tab, or you) is kept out of history, and its cd out of the",
+    "# remembered folder.",
+    "__ssl_quiet=",
+    "__ssl_mark() { [[ $1 == ' '* ]] && __ssl_quiet=1 || __ssl_quiet= }",
     "__ssl_save_dir() {",
-    "  [[ -o interactive && -z $CLAUDECODE ]] || return 0",
+    "  [[ -o interactive && -z $CLAUDECODE && -z $__ssl_quiet ]] || return 0",
     '  mkdir -p -- "${__ssl_lastdir:h}" && print -r -- "$PWD" >| "$__ssl_lastdir"',
     "} 2>/dev/null",
     "autoload -Uz add-zsh-hook",
+    "add-zsh-hook preexec __ssl_mark",
     "add-zsh-hook chpwd __ssl_save_dir",
     "if [[ $PWD == $HOME && -z $CLAUDECODE && -r $__ssl_lastdir ]]; then",
     '  __ssl_dir=$(<"$__ssl_lastdir")',

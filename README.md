@@ -169,7 +169,10 @@ nothing and costs nothing. Restart Claude Code after switching it on.
 `cd`'d into, and your history keeps one copy of each command (the newest). Works in zsh and
 PowerShell. Tabs that start somewhere specific (restored windows, "Open in Terminal") stay
 where they are. Shells run by agents or one-off commands (`ssh host cmd`, `pwsh -Command`) are
-left alone. With the shell prompt switched off, it keeps working with the shell's own prompt.
+left alone. In zsh, a command typed with a leading space stays out of both your history and the
+remembered folder: agents that start commands in terminal tabs (a watch loop, a `claude` launch)
+should begin them with a space. With the shell prompt switched off, it keeps working with the
+shell's own prompt.
 
 **Terminal settings.** The same font and keys everywhere: JetBrainsMono Nerd Font, size 14,
 and Option working as Alt in cmux and Ghostty. In Windows Terminal it becomes the default font

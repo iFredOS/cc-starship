@@ -118,3 +118,34 @@ Deno.test("PowerShell 'prompt off' block: PowerShell's own prompt, still saving 
   assertStringIncludes(block, "Invoke-Starship-PreCommand", "shell memory keeps working");
   assertStringIncludes(promptOffBlock("zsh"), "PROMPT='%n@%m %1~ %# '");
 });
+
+Deno.test("zsh: a command typed with a leading space (agents' tabs) moves neither the folder nor the history", async () => {
+  const z = zshHome();
+  const run = async (lines: string[]) => {
+    const base = Deno.env.toObject();
+    delete base.CLAUDECODE;
+    const child = new Deno.Command("zsh", {
+      args: ["-i"],
+      cwd: z.home,
+      env: { ...base, HOME: z.home, ZDOTDIR: z.home, TERM: "dumb" },
+      clearEnv: true,
+      stdin: "piped",
+      stdout: "null",
+      stderr: "null",
+    }).spawn();
+    const w = child.stdin.getWriter();
+    await w.write(new TextEncoder().encode(lines.join("\n") + "\nexit\n"));
+    await w.close();
+    await child.status;
+  };
+  await run(["cd projects/app"]);
+  assertEquals(Deno.readTextFileSync(z.lastdir).trim(), z.app);
+  const projects = join(z.home, "projects");
+  await run([` cd ${projects}`, "pwd"]);
+  assertEquals(Deno.readTextFileSync(z.lastdir).trim(), z.app, "a space-led cd isn't remembered");
+  await run([" true", `cd ${projects}`]);
+  assertEquals(Deno.readTextFileSync(z.lastdir).trim(), projects, "the next plain cd is");
+  const history = Deno.readTextFileSync(join(z.home, ".zsh_history"));
+  assertStringIncludes(history, "cd projects/app");
+  assert(!history.includes(` cd ${projects}\n`) && !history.includes("true"), history);
+});
