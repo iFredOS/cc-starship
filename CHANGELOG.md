@@ -3,6 +3,11 @@
 Each release lists what people can see or do. `cc-starship --version` prints the exact build:
 `cc-starship 1.3.3 (52 · 1a2b3c4) release · macOS 27.3 arm64` (version, build number, commit).
 
+## 1.4.1 (2026-11-25)
+
+- `cc-starship usage` typed at a terminal ends its line, so zsh no longer shows a highlighted `%` after it.
+  Starship's prompt segment still gets the bare text.
+
 ## 1.4.0 (2026-11-25)
 
 - **`cc-starship` works in new terminal tabs**, without its full path: install adds the program's folder to

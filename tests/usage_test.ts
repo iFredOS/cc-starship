@@ -1,6 +1,6 @@
 import { assertEquals } from "@std/assert";
 import { join } from "node:path";
-import { usageText } from "../src/usage.ts";
+import { usageOutput, usageText } from "../src/usage.ts";
 import { now, tempDir } from "./helpers.ts";
 
 Deno.test("usage line for the shell prompt, zeroing a window once it resets", () => {
@@ -24,4 +24,10 @@ Deno.test("usage line: a window Claude Code didn't send is left out, not the who
   assertEquals(usageText(file), "✻ 5h 42%");
   Deno.writeTextFileSync(file, `0 - 0 -\n`);
   assertEquals(usageText(file), "");
+});
+
+Deno.test("usage command: a line of its own in a terminal, the bare text for Starship's segment", () => {
+  assertEquals(usageOutput("✻ 7d 16%", true), "✻ 7d 16%\n");
+  assertEquals(usageOutput("✻ 7d 16%", false), "✻ 7d 16%");
+  assertEquals(usageOutput("", true), "", "nothing known: nothing printed, not an empty line");
 });

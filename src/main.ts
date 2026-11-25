@@ -43,7 +43,7 @@ import {
 import { readAccountEmail, renderBar } from "./statusline.ts";
 import { runUi } from "./tui.ts";
 import { checkForUpdate, checkInBackground, newerVersion, readUpdateCache, RELEASES } from "./update.ts";
-import { usageText } from "./usage.ts";
+import { usageOutput, usageText } from "./usage.ts";
 import { DEFAULT_HOOK_FROM, DEFAULT_PREFS, HOOK_FROM_CHOICES, type Prefs, resolvePrefs } from "./when.ts";
 
 export const HELP = `cc-starship ${VERSION}
@@ -277,7 +277,10 @@ export async function main(args: string[]): Promise<number> {
       // The prompt's shell rarely has Claude Code's CLAUDE_CONFIG_DIR: see promptUsageFile.
       await Deno.stdout.write(
         new TextEncoder().encode(
-          usageText(promptUsageFile(installDir(), Deno.env.get("CLAUDE_CONFIG_DIR"), home())),
+          usageOutput(
+            usageText(promptUsageFile(installDir(), Deno.env.get("CLAUDE_CONFIG_DIR"), home())),
+            Deno.stdout.isTerminal(),
+          ),
         ),
       );
       return 0;

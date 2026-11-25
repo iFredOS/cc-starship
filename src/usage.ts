@@ -51,3 +51,8 @@ export function usageText(file: string, nowSeconds = Date.now() / 1000): string 
   const parts = [current("5h", usage.fiveHour), current("7d", usage.sevenDay)].filter(Boolean);
   return parts.length ? `✻ ${parts.join(" · ")}` : "";
 }
+
+/** What `cc-starship usage` prints: Starship's segment wants the bare text; a person at a terminal, a whole line. */
+export function usageOutput(text: string, terminal: boolean): string {
+  return text && terminal ? `${text}\n` : text;
+}
