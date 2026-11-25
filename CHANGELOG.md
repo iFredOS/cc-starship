@@ -3,6 +3,16 @@
 Each release lists what people can see or do. `cc-starship --version` prints the exact build:
 `cc-starship 1.3.3 (52 · 1a2b3c4) release · macOS 27.3 arm64` (version, build number, commit).
 
+## 1.3.6 (2026-11-25)
+
+Fixes from a code review of 1.3.4 and 1.3.5:
+
+- _Usage for Claude_ no longer passes an idle session's old numbers to Claude. Each redraw re-stamped the
+  session's snapshot, so it looked newer than the shared numbers that changed since. A snapshot now records
+  when its numbers last changed, and that is what gets compared.
+- If saving the shared numbers fails once (a full disk, a lock on Windows), the next draw tries again instead
+  of waiting for the numbers to change.
+
 ## 1.3.5 (2026-11-25)
 
 - The shell prompt and _Usage for Claude_ no longer jump back to old numbers. Every Claude Code session

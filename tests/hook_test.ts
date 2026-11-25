@@ -143,3 +143,19 @@ Deno.test("hook: a shared file without a 5h window still gives the 7d", () => {
   assertStringIncludes(text, "7d 6%");
   assert(!text.includes("5h"), text);
 });
+
+Deno.test("hook: an idle session redrawing its old numbers doesn't beat a newer shared change", () => {
+  const o = setup();
+  const file = snapshotFile(o.sessions, payload.session_id);
+  const hoursAgo = (h: number) => new Date(now.getTime() - h * 3600e3);
+  saveSnapshot(file, payload, hoursAgo(3)); // its last request, 3 h ago: 5h 21%, 7d 25%
+  Deno.writeTextFileSync(o.usageFile, `${at(1, 2)} 64 ${at(1, 18)} 30\n`); // another session, 1 h ago
+  Deno.utimeSync(o.usageFile, hoursAgo(1), hoursAgo(1));
+  saveSnapshot(file, payload, hoursAgo(0.01)); // idle redraw a minute ago, same numbers
+  const text = context(
+    hookOutput(JSON.stringify({ session_id: "abc-123" }), { ...o, prefs: en12, now, from: 0 }),
+  );
+  assertStringIncludes(text, "5h 64%");
+  assertStringIncludes(text, "7d 30%");
+  assertStringIncludes(text, "context 65%");
+});

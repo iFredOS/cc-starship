@@ -406,3 +406,16 @@ Deno.test("an idle session redrawing old numbers doesn't overwrite newer ones in
   bar(at(97), { usageFile, snapshotFile });
   assertEquals(Deno.readTextFileSync(usageFile), `0 - ${reset} 97\n`, "numbers changed: a new answer, saved");
 });
+
+Deno.test("a shared usage file that couldn't be written is tried again on the next draw", () => {
+  const dir = tempDir();
+  const usageFile = join(dir, "usage");
+  const snapshotFile = join(dir, "sessions", "s.json");
+  const reset = now() + 86400;
+  const p = { ...fixture, rate_limits: { seven_day: { used_percentage: 40, resets_at: reset } } };
+  Deno.mkdirSync(usageFile); // the write fails: a folder sits where the file goes
+  bar(p, { usageFile, snapshotFile });
+  Deno.removeSync(usageFile);
+  bar(p, { usageFile, snapshotFile });
+  assertEquals(Deno.readTextFileSync(usageFile), `0 - ${reset} 40\n`);
+});

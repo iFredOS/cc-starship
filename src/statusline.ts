@@ -280,16 +280,19 @@ function fit(segments: Segments, steps: Segments[], budget: number): string[] {
 }
 
 // Saves 5h/7d usage for the shell prompt: "<5h reset> <5h %> <7d reset> <7d %>".
-function saveUsage(file: string, fiveHour?: Json, sevenDay?: Json): void {
+/** False when the file couldn't be written. */
+function saveUsage(file: string, fiveHour?: Json, sevenDay?: Json): boolean {
   const line = usageLine(fiveHour, sevenDay);
-  if (!line) return;
+  if (!line) return true;
   try {
     mkdirSync(dirname(file), { recursive: true });
     const tmp = `${file}.${Deno.pid}`;
     writeFileSync(tmp, `${line}\n`);
     renameSync(tmp, file);
+    return true;
   } catch {
-    // The shell prompt just keeps the previous numbers.
+    // The shell prompt keeps the previous numbers until the next draw tries again.
+    return false;
   }
 }
 
@@ -309,10 +312,10 @@ export function buildBar(j: Json, opts: BarOptions): { dir: string; vars: Record
   // Claude Code sets COLUMNS; keep a margin for the bar's own indent.
   const budget = (opts.columns ?? Infinity) - 2;
   // An idle session redraws its last numbers: saving those would put back what a newer session replaced.
-  if (opts.usageFile && (!opts.snapshotFile || limitsChanged(opts.snapshotFile, j))) {
+  const saved = !opts.usageFile || (opts.snapshotFile && !limitsChanged(opts.snapshotFile, j)) ||
     saveUsage(opts.usageFile, fiveHour, sevenDay);
-  }
-  if (opts.snapshotFile) saveSnapshot(opts.snapshotFile, j);
+  // A failed save leaves the snapshot's numbers as they were, so the next draw sees a change and tries again.
+  if (opts.snapshotFile && saved) saveSnapshot(opts.snapshotFile, j);
   const prefs = opts.prefs ?? resolvePrefs(DEFAULT_PREFS);
 
   const accent = (s: string) => `${ACCENT}${s}${RESTORE}`;

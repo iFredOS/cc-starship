@@ -15,6 +15,8 @@ interface Window {
 
 interface Snapshot {
   savedAt: number;
+  /** When fiveHour/sevenDay last changed; savedAt moves on every redraw, even an idle one. */
+  limitsAt?: number;
   context?: { pct: number; tokens: number };
   costUsd?: number;
   fiveHour?: Window;
@@ -35,23 +37,29 @@ export function snapshotFile(dir: string, sessionId: string): string {
 const window = (w?: Json): Window | undefined =>
   w?.used_percentage == null ? undefined : { pct: w.used_percentage, resetsAt: w.resets_at ?? 0 };
 
+const sameWindow = (a?: Window, b?: Window) => a?.pct === b?.pct && a?.resetsAt === b?.resetsAt;
+
+const sameLimits = (last: Snapshot, j: Json) =>
+  sameWindow(last.fiveHour, window(j.rate_limits?.five_hour)) &&
+  sameWindow(last.sevenDay, window(j.rate_limits?.seven_day));
+
 /**
  * Whether this payload's 5h/7d differ from what this session saved last. Every session redraws its bar with the
  * numbers of its own last request, so an idle one repeats old numbers; only a change is a new answer.
  */
 export function limitsChanged(file: string, j: Json): boolean {
   const last = readJson(file);
-  if (!last) return true;
-  const same = (a?: Window, b?: Window) => a?.pct === b?.pct && a?.resetsAt === b?.resetsAt;
-  return !same(last.fiveHour, window(j.rate_limits?.five_hour)) ||
-    !same(last.sevenDay, window(j.rate_limits?.seven_day));
+  return !last || !sameLimits(last, j);
 }
 
 /** Saves what the status bar shows for this session (run by the bar on every refresh). */
 export function saveSnapshot(file: string, j: Json, now = new Date()): void {
   const ctx = j.context_window;
+  const last = readJson(file);
+  const savedAt = now.getTime() / 1000;
   const snapshot: Snapshot = {
-    savedAt: now.getTime() / 1000,
+    savedAt,
+    limitsAt: last && sameLimits(last, j) ? last.limitsAt ?? last.savedAt : savedAt,
     context: ctx?.used_percentage == null
       ? undefined
       : { pct: ctx.used_percentage, tokens: ctx.total_input_tokens ?? 0 },
@@ -147,7 +155,7 @@ export function hookOutput(stdin: string, o: HookOptions): string {
   const session = input.session_id ? readJson(snapshotFile(o.sessions, input.session_id)) : null;
   const shared = readUsage(o.usageFile);
   // 5h/7d are account-wide: a resumed session's old snapshot loses to newer shared numbers.
-  const snapshot = session && shared && shared.savedAt > session.savedAt
+  const snapshot = session && shared && shared.savedAt > (session.limitsAt ?? session.savedAt)
     ? { ...session, fiveHour: shared.fiveHour, sevenDay: shared.sevenDay }
     : session ?? shared;
   if (!snapshot) return "";
