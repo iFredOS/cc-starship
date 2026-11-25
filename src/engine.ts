@@ -472,10 +472,11 @@ function blockReport(result: ReturnType<typeof ensureBlock>, file: string, what:
 function pathLine(profile: string, dir: string): string {
   if (extname(profile).toLowerCase() === ".ps1") {
     const d = psQuote(dir);
-    return `if (($env:PATH -split ';') -notcontains ${d}) { $env:PATH = $env:PATH + ';' + ${d} }`;
+    return `if (($env:PATH -split ';') -notcontains ${d}) { $env:PATH = (@("$env:PATH".TrimEnd(';'), ${d}) | Where-Object { $_ }) -join ';' }`;
   }
+  // \${PATH:+…}: an empty PATH gets no empty entry, which would mean the current folder.
   const d = zshQuote(dir);
-  return `case ":$PATH:" in *:${d}:*) ;; *) export PATH="$PATH:"${d} ;; esac`;
+  return `case ":$PATH:" in *:${d}:*) ;; *) export PATH="\${PATH:+$PATH:}"${d} ;; esac`;
 }
 
 /**

@@ -11,7 +11,9 @@ Each release lists what people can see or do. `cc-starship --version` prints the
   first). It is added whatever parts are switched on; updating an existing install adds it too.
 - On Windows, this block counts as a reason to let Windows PowerShell run your profile: an account that blocks
   scripts gets `RemoteSigned` (put back on uninstall), as it already did with the shell prompt or memory on.
-- cmd.exe and Git Bash don't read these profiles, so they still need the full path.
+- cmd.exe and Git Bash don't read these profiles, so they still need the full path; so does bash on a Mac,
+  whose tabs read `~/.bash_profile` rather than the `~/.bashrc` the installer sets up.
+- Uninstall with 1.4.0 or newer: an older copy doesn't know this block and leaves it in your profiles.
 - **Shell memory (zsh): a command typed with a leading space is not yours.** zsh already kept it out of
   history; now a `cd` in it doesn't move the folder new tabs open in either. Agents that type commands into
   terminal tabs (a `cd … && claude` launch, a `while true` watch loop) filled both, so new tabs opened in an

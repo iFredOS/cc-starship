@@ -1068,9 +1068,9 @@ Deno.test("switching memory off, or uninstalling, points to the PowerShell histo
 const NONE = { bar: false, shell: false, usage: false, hook: false, memory: false, terminal: false };
 
 /** PATH as a real shell sees it after reading `profile` twice (a nested shell, a re-sourced profile). */
-function pathAfter(shell: "zsh" | "bash", profile: string, home: string): string {
+function pathAfter(shell: "zsh" | "bash", profile: string, home: string, start = "/usr/bin:/bin"): string {
   const out = new Deno.Command(shell, {
-    args: ["-c", `PATH=/usr/bin:/bin; source "$1"; source "$1"; printf %s "$PATH"`, shell, profile],
+    args: ["-c", `PATH="$2"; source "$1"; source "$1"; printf %s "$PATH"`, shell, profile, start],
     env: { HOME: home },
     clearEnv: true,
     stdout: "piped",
@@ -1105,6 +1105,11 @@ Deno.test("the cc-starship command: bash profiles get the same block", async () 
     Deno.env.set("CC_STARSHIP_PROFILES", bashrc);
     await install("rainbow", { ...opts(s), components: NONE });
     assertEquals(pathAfter("bash", bashrc, s.home), `/usr/bin:/bin:${join(s.installDir, "bin")}`);
+    assertEquals(
+      pathAfter("bash", bashrc, s.home, ""),
+      join(s.installDir, "bin"),
+      "no empty entry (the current folder)",
+    );
     await uninstall();
     assert(!sha(bashrc).match(/^[0-9a-f]+$/), "a profile created for the block is removed with it");
   } finally {

@@ -66,8 +66,8 @@ switches looks, and uninstalls cleanly, on macOS and Windows.
 4. **Open a new terminal tab and restart Claude Code.** That's it.
 
 To change the look later, run `cc-starship` in a new terminal tab: the installer puts it on your
-PATH (zsh, bash and PowerShell). In the tab you installed from, or in cmd.exe or Git Bash, use the
-full path:
+PATH in zsh and PowerShell. In the tab you installed from, in cmd.exe or Git Bash, or in bash on a
+Mac (whose tabs read `~/.bash_profile`, not the `~/.bashrc` the installer sets up), use the full path:
 
 ```sh
 ~/.local/share/cc-starship/bin/cc-starship                  # macOS
@@ -211,7 +211,7 @@ Uninstall, or switching a part off, uses that record.
 | the program, generated configs, backups | `~/.local/share/cc-starship` (Windows: `$env:LOCALAPPDATA\cc-starship`) | removed |
 | shell prompt config | `~/.config/starship.toml` | your previous file or link, byte for byte |
 | Claude Code `statusLine` and usage hook | `~/.claude/settings.json` | only these taken out; anything else you changed since is kept, your own hooks are never touched |
-| the `cc-starship` command | `~/.zshrc` (and `~/.bashrc` when bash is your shell), or each PowerShell `$PROFILE`: the program's folder added at the end of PATH, so it never hides a command of yours | the block removed |
+| the `cc-starship` command | `~/.zshrc` (and `~/.bashrc` when bash is your shell), or each PowerShell `$PROFILE`: the program's folder added at the end of PATH, so it never hides a command of yours (a Starship the installer downloaded there is reachable too, after yours) | the block removed |
 | Starship start-up line, only if missing | `~/.zshrc`, or each PowerShell `$PROFILE` | the added block removed |
 | shell memory | the same profiles, in a block of its own | the block removed |
 | Windows PowerShell's script setting, only when it blocks scripts (a new Windows account does, so no profile would run) | your account's execution policy, set to `RemoteSigned` (PowerShell 7's default) | your previous setting, unless you changed it since |
