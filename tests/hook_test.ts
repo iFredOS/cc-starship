@@ -135,3 +135,11 @@ Deno.test("hook: newer shared 5h/7d numbers win over an old session snapshot (re
   assertStringIncludes(text, "7d 30%");
   assertStringIncludes(text, "context 65%", "context still comes from the session");
 });
+
+Deno.test("hook: a shared file without a 5h window still gives the 7d", () => {
+  const o = setup();
+  Deno.writeTextFileSync(o.usageFile, `0 - ${at(1, 18)} 6\n`);
+  const text = context(hookOutput(JSON.stringify({ session_id: "new" }), { ...o, prefs: en12, now }));
+  assertStringIncludes(text, "7d 6%");
+  assert(!text.includes("5h"), text);
+});

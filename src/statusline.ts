@@ -1,6 +1,7 @@
 // The Claude Code status bar: maps the session JSON to CC_* env vars and renders
 // them with `starship prompt` using the generated statusline.toml. Segments and
 // formats follow the cc-memento oh-my-posh bar, with Nerd Font icons.
+import { usageLine } from "./usage.ts";
 import { mkdirSync, renameSync, writeFileSync } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
 import { bg, contrast, fg, mix } from "./color.ts";
@@ -280,10 +281,8 @@ function fit(segments: Segments, steps: Segments[], budget: number): string[] {
 
 // Saves 5h/7d usage for the shell prompt: "<5h reset> <5h %> <7d reset> <7d %>".
 function saveUsage(file: string, fiveHour?: Json, sevenDay?: Json): void {
-  if (fiveHour?.used_percentage == null || sevenDay?.used_percentage == null) return;
-  const line = [fiveHour, sevenDay].map((w) => `${w.resets_at ?? 0} ${Math.round(w.used_percentage)}`).join(
-    " ",
-  );
+  const line = usageLine(fiveHour, sevenDay);
+  if (!line) return;
   try {
     mkdirSync(dirname(file), { recursive: true });
     const tmp = `${file}.${Deno.pid}`;

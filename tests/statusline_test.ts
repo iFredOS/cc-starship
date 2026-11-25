@@ -377,3 +377,10 @@ Deno.test("calm chips: a deeper shade where the light one faded the text, today'
     "Rainbow CTX unchanged",
   );
 });
+
+Deno.test("bar saves the 7d for the prompt even when Claude Code sends no 5h window", () => {
+  const usageFile = join(tempDir(), "usage");
+  const reset = now() + 86400;
+  bar({ ...fixture, rate_limits: { seven_day: { used_percentage: 6, resets_at: reset } } }, { usageFile });
+  assertEquals(Deno.readTextFileSync(usageFile), `0 - ${reset} 6\n`);
+});

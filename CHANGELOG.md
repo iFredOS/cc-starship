@@ -3,6 +3,13 @@
 Each release lists what people can see or do. `cc-starship --version` prints the exact build:
 `cc-starship 1.3.3 (52 · 1a2b3c4) release · macOS 27.3 arm64` (version, build number, commit).
 
+## 1.3.4 (2026-11-25)
+
+- The shell prompt, `cc-starship usage` and _Usage for Claude_ follow plans with no 5-hour limit (Ultra,
+  formerly Max 20x, since November 2026). Claude Code then sends the 7-day window alone, and the status bar
+  saved nothing unless both were there, so they kept showing the last numbers from before the change. A
+  missing window is now saved as missing and left out: `✻ 7d 6%`.
+
 ## 1.3.3 (2026-11-13)
 
 - Calm chips (below 70%) are easier to read where they had faded the number: on Sunset, Autumn, Tidepool and

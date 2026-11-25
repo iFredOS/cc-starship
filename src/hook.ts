@@ -1,5 +1,6 @@
 // Lets Claude see the status bar's numbers: the bar saves a snapshot per session,
 // and a UserPromptSubmit hook hands it to Claude as context with every prompt.
+import { parseUsage } from "./usage.ts";
 import { mkdirSync, renameSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { type Clock, formatWhen, type Language } from "./when.ts";
@@ -67,10 +68,10 @@ function readJson(file: string): Snapshot | null {
 /** The shared 5h/7d numbers the bar saves for the shell prompt. */
 function readUsage(file: string): Snapshot | null {
   try {
-    const f = Deno.readTextFileSync(file).trim().split(/\s+/).map(Number);
-    if (f.length !== 4 || f.some(Number.isNaN)) return null;
+    const usage = parseUsage(Deno.readTextFileSync(file));
+    if (!usage) return null;
     const savedAt = (Deno.statSync(file).mtime?.getTime() ?? 0) / 1000;
-    return { savedAt, fiveHour: { resetsAt: f[0], pct: f[1] }, sevenDay: { resetsAt: f[2], pct: f[3] } };
+    return { savedAt, ...usage };
   } catch {
     return null;
   }

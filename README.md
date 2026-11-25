@@ -142,7 +142,8 @@ control panel, **A** previews any look with its warnings showing.
 ![The status bar fitted to a narrow window](docs/images/narrow.png)
 
 The shell prompt shows your 5-hour and 7-day usage too (`✻ 5h 42% · 7d 23%`), saved by the
-status bar each time it refreshes.
+status bar each time it refreshes. A plan with no 5-hour limit (Ultra, since November 2026) shows
+the 7-day alone (`✻ 7d 23%`).
 
 **Several Claude accounts** (one `CLAUDE_CONFIG_DIR` each): limits are per account, so each
 account's numbers are saved in their own file in the install folder: `usage` for the stock
