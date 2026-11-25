@@ -244,6 +244,12 @@ For comparison, the oh-my-posh status bar this replaced took about 94 ms on the 
 - **Boxes or `?` instead of icons:** your terminal's font isn't a Nerd Font. Install one from
   Components → Nerd Font, then choose it in your terminal's settings (or switch on
   *Terminal settings*). macOS Terminal.app's default font has no icons.
+- **`cc-starship: command not found`:** open a new tab (the tab you installed from keeps its old
+  PATH). Installed before 1.4.0? Run the new download once to update. In cmd.exe, Git Bash or bash
+  on a Mac, use the full path from [Install](#install).
+- **The shell prompt shows old usage numbers:** an old Claude Code session redraws the numbers of
+  its own last request. Since 1.3.5 only a change is saved; restarting sessions started before a
+  plan change clears them.
 - **Nothing changed in Claude Code:** restart it. The status bar updates within a minute, but
   hooks are read only when Claude Code starts.
 - **Windows Terminal still shows the old font:** close and reopen it after a new font is installed.
